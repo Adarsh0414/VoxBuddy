@@ -1,0 +1,2691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>VoxBuddy — App Preview</title>
+
+<!-- PWA: makes this installable to a phone home screen (icon, splash,
+     full-screen launch — no browser address bar). See PROGRESS.md for
+     what this does and doesn't cover vs. a real native app. -->
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/static/icons/favicon.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="theme-color" content="#0B0D14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<!-- Standards-track equivalent of the Apple-specific tag above — Chrome
+     flags the Apple-only tag as deprecated on its own, but iOS Safari
+     still needs it for real PWA-install behavior, so both stay. -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VoxBuddy">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #0B0D14;
+    --bg-panel: #12151E;
+    --bg-raised: #171B27;
+    --bg-card: #1B1F2C;
+    --ink: #EDEFF4;
+    --ink-muted: #8B90A3;
+    --ink-faint: #565B6D;
+    --self: #E8A94C;
+    --self-dim: #6b5535;
+    --partner: #4FD1C5;
+    --partner-dim: #2f5e59;
+    --line: #232838;
+    --danger: #E8735F;
+    --success: #6FCF97;
+
+    /* Glass surfaces */
+    --glass-bg: linear-gradient(155deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    --glass-bg-strong: linear-gradient(155deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
+    --glass-border: rgba(255,255,255,0.09);
+    --glass-blur: blur(18px) saturate(160%);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--ink);
+    font-family: 'Manrope', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 60px;
+  }
+
+  .meta-banner { max-width: 420px; width: 100%; text-align: center; margin-bottom: 20px; }
+  .meta-banner .kicker {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .meta-banner p { font-size: 13px; color: var(--ink-muted); line-height: 1.6; margin-top: 8px; }
+
+  .phone {
+    width: 390px; max-width: 100%; height: 800px; max-height: 84vh;
+    background: var(--bg-panel);
+    border-radius: 44px; border: 1px solid var(--line);
+    box-shadow: 0 40px 80px -30px rgba(0,0,0,0.7);
+    overflow: hidden; position: relative;
+    display: flex; flex-direction: column;
+  }
+  .notch {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    width: 110px; height: 22px; background: #000; border-radius: 14px; z-index: 30;
+  }
+
+  /* Ambient blurred blobs behind all content — the light source for the
+     glass surfaces above them. */
+  .ambient-blob {
+    position: absolute; border-radius: 50%; filter: blur(50px); z-index: 0;
+    pointer-events: none;
+  }
+  .ambient-blob.b1 {
+    width: 260px; height: 260px; top: -60px; left: -80px;
+    background: radial-gradient(circle, rgba(232,169,76,0.35), transparent 70%);
+    animation: drift1 22s ease-in-out infinite;
+  }
+  .ambient-blob.b2 {
+    width: 300px; height: 300px; bottom: -100px; right: -100px;
+    background: radial-gradient(circle, rgba(79,209,197,0.32), transparent 70%);
+    animation: drift2 26s ease-in-out infinite;
+  }
+  .ambient-blob.b3 {
+    width: 200px; height: 200px; top: 40%; right: -60px;
+    background: radial-gradient(circle, rgba(139,110,230,0.18), transparent 70%);
+    animation: drift3 30s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(30px,40px) scale(1.15); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-25px,-35px) scale(1.1); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-20px,25px) scale(1.2); } }
+
+  .app-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; z-index: 1; }
+
+  .screen {
+    display: none; flex-direction: column;
+    flex: 1; overflow-y: auto;
+    padding: 56px 20px 20px;
+  }
+  /* Real page-transition motion — was an instant class-swap before, no
+     movement at all between screens. prefers-reduced-motion respected:
+     users who've asked for less motion get the swap without animation. */
+  .screen.active {
+    display: flex;
+    animation: screen-enter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes screen-enter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .screen.active { animation: none; }
+  }
+
+  svg.icon { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+  /* ================= Bottom tab bar ================= */
+  .tabbar {
+    display: flex; justify-content: space-around; align-items: center;
+    padding: 10px 8px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(14,16,24,0.55);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border-top: 1px solid var(--glass-border);
+    z-index: 20;
+  }
+  .tab-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: none; border: none; color: var(--ink-faint);
+    font-family: 'Manrope', sans-serif; font-size: 10.5px; font-weight: 600;
+    padding: 4px 10px; cursor: pointer;
+  }
+  .tab-btn.active { color: var(--partner); }
+  .tab-btn.active svg.icon { stroke: var(--partner); }
+
+  /* ================= Shared bits ================= */
+  .top-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
+  .greeting-small { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); }
+  .greeting-big { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 500; margin-top: 4px; }
+  .icon-btn {
+    width: 38px; height: 38px; border-radius: 12px;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: center;
+    color: var(--ink-muted); position: relative; cursor: pointer;
+  }
+  .icon-btn .dot { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--self); border: 2px solid var(--bg-panel); }
+
+  .section-title { font-size: 13px; font-weight: 700; color: var(--ink); margin: 26px 0 12px; display: flex; justify-content: space-between; align-items: center; }
+  .see-all { font-size: 12px; color: var(--partner); font-weight: 600; cursor: pointer; }
+
+  /* ================= HOME ================= */
+  .hero-card {
+    background: var(--glass-bg-strong);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 8px 32px -12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-radius: 22px;
+    padding: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-card .hero-label { font-size: 12px; color: var(--ink-muted); }
+  .hero-card .hero-title { font-family: 'Fraunces', serif; font-size: 20px; margin-top: 6px; max-width: 220px; line-height: 1.25; }
+  .start-btn {
+    margin-top: 18px; display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, var(--self), #f0c98a);
+    color: #1a1206; font-weight: 700; font-size: 13.5px;
+    padding: 12px 18px; border-radius: 14px; cursor: pointer; border: none;
+    box-shadow: 0 6px 24px -6px rgba(232,169,76,0.55);
+  }
+  .hero-orb-deco {
+    position: absolute; right: -20px; top: -20px; width: 110px; height: 110px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, var(--partner), transparent 70%);
+    opacity: 0.5; filter: blur(2px);
+  }
+
+  .lang-row { display: flex; align-items: stretch; gap: 10px; margin-top: 18px; }
+  .lang-pill {
+    display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 9px 12px; flex: 1;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+  }
+  .lang-pill-label { font-size: 9.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; }
+  .lang-pill-value { font-size: 13px; font-weight: 700; margin-top: 1px; }
+
+  .lang-badge {
+    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 700; color: #0B0D14;
+  }
+  .lang-badge.en { background: linear-gradient(135deg, #8fd3ff, #4a90d9); }
+  .lang-badge.hi { background: linear-gradient(135deg, #ff9a56, #6fcf97); }
+  .lang-badge.fr { background: linear-gradient(135deg, #7ea8ff, #ff8080); }
+  .lang-badge.es { background: linear-gradient(135deg, #ffcf5c, #ff7676); }
+  .lang-badge.de { background: linear-gradient(135deg, #c9c9c9, #d9b34a); }
+
+  .autodetect-pill {
+    display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 9px 14px; flex: 1;
+    background: linear-gradient(155deg, rgba(79,209,197,0.14), rgba(79,209,197,0.02));
+    border: 1px dashed rgba(79,209,197,0.45);
+  }
+  .pulse-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--partner); flex-shrink: 0; position: relative; }
+  .pulse-dot::after {
+    content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--partner);
+    animation: pulse-ring 1.8s ease-out infinite;
+  }
+  @keyframes pulse-ring { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(1.9); opacity: 0; } }
+
+  .detect-hint { font-size: 11.5px; color: var(--ink-faint); margin-top: 10px; line-height: 1.5; }
+
+  .stats-row { display: flex; gap: 10px; margin-top: 22px; }
+  .stat-card {
+    flex: 1; border-radius: 16px; padding: 14px 12px;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .stat-card .stat-num { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; }
+  .stat-card .stat-label { font-size: 10.5px; color: var(--ink-muted); margin-top: 2px; }
+
+  .convo-card {
+    display: flex; align-items: center; gap: 12px;
+    border-radius: 16px; padding: 13px; margin-bottom: 10px; cursor: pointer;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    transition: background 0.15s;
+    animation: card-slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+  .convo-card:nth-child(1) { animation-delay: 0.03s; }
+  .convo-card:nth-child(2) { animation-delay: 0.07s; }
+  .convo-card:nth-child(3) { animation-delay: 0.11s; }
+  .convo-card:nth-child(4) { animation-delay: 0.15s; }
+  .convo-card:nth-child(n+5) { animation-delay: 0.18s; }
+  @keyframes card-slide-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+  @media (prefers-reduced-motion: reduce) { .convo-card { animation: none; } }
+  .convo-card:active { background: var(--glass-bg-strong); }
+  .convo-avatar {
+    width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; color: #0B0D14;
+  }
+  .convo-avatar.lang-hi { background: linear-gradient(135deg, #ff9a56, #6fcf97); }
+  .convo-avatar.lang-fr { background: linear-gradient(135deg, #7ea8ff, #ff8080); }
+  .convo-avatar.lang-es { background: linear-gradient(135deg, #ffcf5c, #ff7676); }
+  .convo-avatar.lang-de { background: linear-gradient(135deg, #c9c9c9, #d9b34a); }
+  .convo-info { flex: 1; min-width: 0; }
+  .convo-info .convo-title { font-size: 13.5px; font-weight: 700; }
+  .convo-info .convo-sub { font-size: 12px; color: var(--ink-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .convo-meta { text-align: right; flex-shrink: 0; }
+  .convo-meta .convo-time { font-size: 11px; color: var(--ink-faint); }
+  .convo-meta .convo-dur { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-muted); margin-top: 3px; }
+
+  .tip-card {
+    display: flex; gap: 12px; align-items: flex-start;
+    border-radius: 16px; padding: 14px; margin-top: 22px;
+    background: linear-gradient(155deg, rgba(79,209,197,0.14), rgba(79,209,197,0.03));
+    backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid rgba(79,209,197,0.22);
+  }
+  .tip-card .tip-icon { color: var(--partner); flex-shrink: 0; margin-top: 2px; }
+  .tip-card .tip-title { font-size: 12.5px; font-weight: 700; }
+  .tip-card .tip-desc { font-size: 12px; color: var(--ink-muted); margin-top: 3px; line-height: 1.5; }
+
+  /* ================= HISTORY ================= */
+  .search-bar {
+    display: flex; align-items: center; gap: 8px;
+    border-radius: 12px; padding: 10px 12px; color: var(--ink-faint);
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+  }
+  .search-bar input {
+    background: none; border: none; outline: none; color: var(--ink);
+    font-family: 'Manrope', sans-serif; font-size: 13px; flex: 1;
+  }
+  .filter-row { display: flex; gap: 8px; margin-top: 14px; overflow-x: auto; padding-bottom: 2px; }
+  .filter-chip {
+    font-size: 12px; font-weight: 600; padding: 7px 13px; border-radius: 20px;
+    color: var(--ink-muted); white-space: nowrap; cursor: pointer;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+  }
+  .filter-chip.selected { background: var(--partner); border-color: var(--partner); color: #06201d; backdrop-filter: none; }
+
+  .history-date-label { font-size: 11px; font-weight: 700; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; margin: 18px 0 8px; }
+
+  /* ================= PROFILE ================= */
+  .profile-header { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 6px; }
+  .avatar-lg {
+    width: 84px; height: 84px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--self), var(--partner));
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif; font-size: 30px; font-weight: 600; color: #0B0D14;
+  }
+  .profile-name { font-family: 'Fraunces', serif; font-size: 20px; margin-top: 12px; }
+  .profile-sub { font-size: 12.5px; color: var(--ink-muted); margin-top: 3px; }
+  .edit-profile-btn {
+    margin-top: 14px; font-size: 12.5px; font-weight: 700; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 12px; padding: 8px 16px; cursor: pointer;
+    background: var(--bg-raised);
+  }
+
+  .profile-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 24px; }
+  .profile-stat {
+    text-align: center; border-radius: 14px; padding: 12px 6px;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+  }
+  .profile-stat .num { font-family: 'Fraunces', serif; font-size: 19px; }
+  .profile-stat .lbl { font-size: 10px; color: var(--ink-muted); margin-top: 2px; }
+
+  .badge-row { display: flex; gap: 10px; overflow-x: auto; margin-top: 8px; padding-bottom: 4px; }
+  .badge-row .badge { animation: badge-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+  .badge-row .badge:nth-child(1) { animation-delay: 0.05s; }
+  .badge-row .badge:nth-child(2) { animation-delay: 0.12s; }
+  .badge-row .badge:nth-child(3) { animation-delay: 0.19s; }
+  .badge-row .badge:nth-child(4) { animation-delay: 0.26s; }
+  @keyframes badge-pop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .badge-row .badge { animation: none; } }
+
+  /* Universal tactile press feedback — buttons previously had zero
+     interaction motion, just an instant color change (or nothing). */
+  button { transition: transform 0.12s ease; }
+  button:active { transform: scale(0.96); }
+  @media (prefers-reduced-motion: reduce) { button:active { transform: none; } }
+
+  /* Passport-stamp badges — grounded in the travel theme (VoxBuddy is a
+     travel companion) instead of generic rounded-square achievement
+     tiles. Circular, slightly rotated, dashed inner ring like an actual
+     ink stamp; unlocked ones get a subtle "stamped" tilt for character. */
+  .badge {
+    flex-shrink: 0; width: 78px; text-align: center; padding: 10px 6px 8px;
+    border-radius: 50%;
+    aspect-ratio: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 2px dashed var(--glass-border);
+    transition: transform 0.25s ease, border-color 0.25s ease;
+  }
+  .badge:not(.locked) {
+    border-color: var(--partner);
+    transform: rotate(-4deg);
+  }
+  .badge:not(.locked):nth-child(even) { transform: rotate(3deg); }
+  .badge .badge-emoji { font-size: 19px; }
+  .badge .badge-name { font-size: 8px; color: var(--ink-muted); margin-top: 3px; font-weight: 700; line-height: 1.2; padding: 0 4px; text-transform: uppercase; letter-spacing: 0.02em; }
+
+  /* Profile flair — unlocked badges shown as a persistent strip next to
+     the name, instead of only living inside the badges grid below. */
+  .profile-flair { display: flex; gap: 4px; justify-content: center; margin-top: 4px; min-height: 20px; }
+  .flair-chip {
+    font-size: 14px; width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--glass-bg); border: 1px solid var(--glass-border);
+  }
+
+  /* Badge-unlock toast */
+  .badge-toast {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%) translateY(-140%);
+    display: flex; align-items: center; gap: 12px;
+    background: var(--bg-panel); border: 1px solid var(--partner);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+    border-radius: 16px; padding: 12px 18px; z-index: 999;
+    transition: transform 0.35s ease;
+    max-width: 320px;
+  }
+  .badge-toast.show { transform: translateX(-50%) translateY(0); }
+  .badge-toast-emoji { font-size: 26px; }
+  .badge-toast-title { font-size: 10.5px; color: var(--partner); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .badge-toast-name { font-size: 14px; font-weight: 700; margin-top: 2px; }
+
+  .offline-banner {
+    display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    background: #7A3A1D; color: #FFE9D6; text-align: center;
+    font-size: 12.5px; font-weight: 600; padding: 9px 16px;
+  }
+  .offline-banner.show { display: block; }
+
+  .lang-proficiency-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .lang-proficiency-row:last-child { border-bottom: none; }
+  .lang-proficiency-row .lp-left { display: flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 600; }
+  .lp-bar-track { width: 70px; height: 5px; background: var(--bg-raised); border-radius: 4px; overflow: hidden; }
+  .lp-bar-fill { height: 100%; background: var(--partner); border-radius: 4px; }
+
+  .signout-btn {
+    margin-top: 26px; text-align: center; color: var(--danger); font-size: 13px; font-weight: 700;
+    padding: 13px; border-radius: 14px; border: 1px solid rgba(232,115,95,0.3); cursor: pointer;
+  }
+
+  /* ================= SETTINGS ================= */
+  .settings-group { margin-top: 22px; }
+  .settings-group-label { font-size: 11px; font-weight: 700; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .settings-card {
+    border-radius: 16px; overflow: hidden;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+  }
+  .settings-row {
+    display: flex; align-items: center; gap: 12px; padding: 13px 14px;
+    border-bottom: 1px solid var(--glass-border);
+    transition: background 0.15s ease;
+  }
+  .settings-row[onclick]:active { background: rgba(255,255,255,0.04); }
+  .settings-row:last-child { border-bottom: none; }
+  /* Icon chips — colored circular backgrounds instead of bare outline
+     icons floating in space, alternating self/partner tint per row so
+     the list has visual rhythm instead of reading as one flat block. */
+  .settings-row .s-icon {
+    color: var(--ink); display: flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    background: color-mix(in srgb, var(--self) 22%, transparent);
+  }
+  .settings-row:nth-child(even) .s-icon { background: color-mix(in srgb, var(--partner) 22%, transparent); }
+  .settings-row .s-label { flex: 1; font-size: 13.5px; font-weight: 600; }
+  .settings-row .s-value { font-size: 12.5px; color: var(--ink-faint); }
+
+  .toggle { width: 40px; height: 24px; border-radius: 20px; background: var(--line); position: relative; cursor: pointer; flex-shrink: 0; }
+  .toggle.on { background: var(--partner); }
+  .toggle .knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: white; transition: left 0.15s; }
+  .toggle.on .knob { left: 19px; }
+
+  /* ================= TRANSCRIPT DETAIL ================= */
+  .detail-header { display: flex; align-items: center; gap: 10px; }
+  .back-btn { color: var(--ink-muted); cursor: pointer; }
+  .detail-title { font-size: 14.5px; font-weight: 700; }
+  .detail-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
+  .transcript-list { margin-top: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .bubble { max-width: 82%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; }
+  .bubble.partner { align-self: flex-start; background: rgba(79,209,197,0.12); border: 1px solid rgba(79,209,197,0.25); border-bottom-left-radius: 4px; }
+  .bubble.self { align-self: flex-end; background: rgba(232,169,76,0.12); border: 1px solid rgba(232,169,76,0.25); border-bottom-right-radius: 4px; }
+  .bubble .orig { color: var(--ink-faint); font-size: 11px; margin-top: 4px; font-style: italic; }
+
+  /* ================= LOGIN ================= */
+  .login-toggle { display: flex; gap: 8px; margin-top: 36px; }
+  .login-toggle button {
+    flex: 1; padding: 11px; border-radius: 12px; font-size: 13px; font-weight: 700;
+    cursor: pointer; border: 1px solid var(--glass-border);
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    color: var(--ink-muted);
+  }
+  .login-toggle button.selected { border-color: var(--partner); color: var(--partner); background: rgba(79,209,197,0.1); }
+
+  .login-field { margin-top: 18px; }
+  .login-field label { font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; }
+  .login-field input {
+    display: block; width: 100%; margin-top: 8px; padding: 13px 14px;
+    border-radius: 12px; font-size: 15px; color: var(--ink);
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border); font-family: 'Manrope', sans-serif;
+  }
+  .login-field input:focus { outline: none; border-color: var(--partner); }
+  .login-field input.otp-input { letter-spacing: 0.4em; font-family: 'IBM Plex Mono', monospace; font-size: 20px; text-align: center; }
+
+  .login-cta {
+    margin-top: 22px; background: linear-gradient(135deg, var(--self), #f0c98a);
+    color: #1a1206; font-weight: 700; font-size: 14px; text-align: center;
+    padding: 14px; border-radius: 14px; cursor: pointer; border: none; width: 100%;
+    box-shadow: 0 6px 24px -6px rgba(232,169,76,0.5);
+  }
+  .login-cta:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+  .login-error { color: var(--danger); font-size: 12.5px; margin-top: 12px; min-height: 16px; }
+  .login-meta { font-size: 12.5px; color: var(--ink-muted); margin-top: 16px; text-align: center; }
+  .login-meta a { color: var(--partner); cursor: pointer; font-weight: 600; }
+  .login-step { display: none; }
+  .login-step.active { display: block; }
+
+  /* ================= SETUP (multi-step wizard) ================= */
+  .wordmark {
+    font-family: 'Fraunces', serif; font-weight: 500; font-size: 28px;
+    background: linear-gradient(120deg, var(--self), var(--partner));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .tagline { font-size: 13px; color: var(--ink-muted); margin-top: 6px; line-height: 1.5; }
+  .or-divider {
+    display: flex; align-items: center; gap: 12px; margin: 16px 0;
+    color: var(--ink-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .or-divider::before, .or-divider::after { content: ''; flex: 1; height: 1px; background: var(--glass-border); }
+
+  /* ================= Signature element: voice waveform =================
+     Two voices (amber = you, teal = them) interleaving into one shared
+     waveform — this IS what the product does, not a decorative blob.
+     Bars are generated in JS (renderWaveform) so the amber->teal gradient
+     interpolates smoothly across however many bars are requested. */
+  .voice-waveform { display: flex; align-items: center; justify-content: center; gap: 3px; height: 40px; margin: 20px 0 4px; }
+  .wave-bar { width: 3px; border-radius: 2px; height: 8px; animation: wave-bounce 1.15s ease-in-out infinite; }
+  @keyframes wave-bounce { 0%, 100% { height: 7px; opacity: 0.55; } 50% { height: 32px; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .wave-bar { animation: none; height: 18px; opacity: 0.85; } }
+
+  /* ================= Login screen background art =================
+     Original SVG constellation, not a stock photo — dots + connecting
+     lines double as both "night sky" atmosphere and a literal world-map/
+     network-of-people motif, grounded in the actual tagline ("bringing
+     worlds together") rather than decoration for its own sake. */
+  .login-constellation {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    z-index: 0; pointer-events: none; opacity: 0.55;
+  }
+
+  /* Flowing sound wave band — see the markup comment above for the
+     construction (one 180-unit period, replicated via <use> at exact
+     period offsets across a 720-unit/4-period viewBox). Since the
+     viewBox is exactly 4 periods, -25% is always exactly one period's
+     width regardless of actual rendered pixel size — that's what makes
+     the loop seamless: percentage-of-own-width transform, not a
+     hand-guessed pixel value. */
+  .login-flow-wave {
+    position: absolute; top: 30%; left: 0; width: 200%; height: 90px;
+    z-index: 0; pointer-events: none; opacity: 0.4;
+    animation: flow-scroll 9s linear infinite;
+  }
+  .login-flow-wave svg { width: 100%; height: 100%; display: block; }
+  .login-flow-wave .wu-self { stroke: var(--self); }
+  .login-flow-wave .wu-partner { stroke: var(--partner); }
+  @keyframes flow-scroll { from { transform: translateX(0); } to { transform: translateX(-25%); } }
+  @media (prefers-reduced-motion: reduce) { .login-flow-wave { animation: none; } }
+  .const-lines line {
+    stroke: color-mix(in srgb, var(--partner) 45%, var(--self) 25%);
+    stroke-width: 0.6; opacity: 0.28;
+  }
+  .const-dots circle {
+    fill: var(--partner);
+    animation: const-twinkle 4s ease-in-out infinite;
+  }
+  .const-dots circle:nth-child(odd) { fill: var(--self); animation-duration: 5s; }
+  .const-dots circle:nth-child(3n) { animation-delay: 0.6s; }
+  .const-dots circle:nth-child(4n) { animation-delay: 1.3s; }
+  .const-dots circle:nth-child(5n) { animation-delay: 2.1s; }
+  @keyframes const-twinkle { 0%, 100% { opacity: 0.35; r: 2.4px; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .const-dots circle { animation: none; opacity: 0.7; } }
+
+  /* Slow-drifting ambient particles — small glowing points rising and
+     fading, pure atmosphere/depth, layered above the constellation. */
+  .login-particles { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .login-particles span {
+    position: absolute; bottom: -10px; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--partner); opacity: 0;
+    animation: particle-rise 9s ease-in infinite;
+    box-shadow: 0 0 6px 1px currentColor;
+  }
+  .login-particles span:nth-child(1) { left: 12%; background: var(--self); animation-delay: 0s; animation-duration: 8s; }
+  .login-particles span:nth-child(2) { left: 28%; animation-delay: 1.4s; animation-duration: 10s; }
+  .login-particles span:nth-child(3) { left: 47%; background: var(--self); animation-delay: 2.8s; animation-duration: 9s; }
+  .login-particles span:nth-child(4) { left: 63%; animation-delay: 4.2s; animation-duration: 11s; }
+  .login-particles span:nth-child(5) { left: 79%; background: var(--self); animation-delay: 5.5s; animation-duration: 8.5s; }
+  .login-particles span:nth-child(6) { left: 91%; animation-delay: 3.1s; animation-duration: 10.5s; }
+  @keyframes particle-rise {
+    0% { transform: translateY(0) scale(0.6); opacity: 0; }
+    12% { opacity: 0.9; }
+    88% { opacity: 0.4; }
+    100% { transform: translateY(-420px) scale(1); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .login-particles { display: none; } }
+
+  /* Staggered entrance for the login screen's own content — arrives in
+     sequence on load instead of appearing all at once statically.
+     Delays are set per-element inline (animation-delay) in the markup. */
+  .login-in { animation: login-fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) backwards; position: relative; z-index: 1; }
+  @keyframes login-fade-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { .login-in { animation: none; } }
+
+  /* JS-driven mode: real mic energy sets bar heights directly per audio
+     frame (see updateConvoWaveformLive) — the looping CSS keyframe would
+     fight with that, so it's switched off here. */
+  .voice-waveform.live-driven .wave-bar { animation: none; transition: height 0.06s linear; }
+
+  .step-progress { display: flex; gap: 6px; margin-top: 28px; }
+  .step-progress .seg { flex: 1; height: 3px; border-radius: 2px; background: var(--line); }
+  .step-progress .seg.done { background: var(--partner); }
+
+  .wizard-pane { display: none; flex-direction: column; flex: 1; margin-top: 28px; }
+  .wizard-pane.active { display: flex; }
+  .wizard-title { font-family: 'Fraunces', serif; font-size: 21px; }
+  .wizard-sub { font-size: 13px; color: var(--ink-muted); margin-top: 6px; line-height: 1.5; }
+
+  .setup-cta {
+    margin-top: auto; background: linear-gradient(135deg, var(--self), #f0c98a);
+    color: #1a1206; font-weight: 700; font-size: 14px; text-align: center;
+    padding: 15px; border-radius: 14px; cursor: pointer; border: none; width: 100%;
+    box-shadow: 0 6px 24px -6px rgba(232,169,76,0.5);
+  }
+  .setup-cta:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+  .setup-back { font-size: 12.5px; color: var(--ink-muted); margin-top: 12px; text-align: center; cursor: pointer; }
+
+  /* Earbud connect simulation */
+  .connect-visual { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  .earbud-icon-wrap {
+    width: 96px; height: 96px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border); position: relative;
+  }
+  .earbud-icon-wrap.scanning::after {
+    content: ''; position: absolute; inset: -8px; border-radius: 50%;
+    border: 2px solid var(--partner); opacity: 0; animation: scan-pulse 1.6s ease-out infinite;
+  }
+  @keyframes scan-pulse { 0% { transform: scale(0.85); opacity: 0.8; } 100% { transform: scale(1.5); opacity: 0; } }
+  .earbud-icon-wrap.connected { border-color: var(--success); background: rgba(111,207,151,0.1); }
+  .connect-status-title { font-size: 15px; font-weight: 700; text-align: center; }
+  .connect-status-sub { font-size: 12.5px; color: var(--ink-muted); text-align: center; }
+  .device-found-card {
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border); border-radius: 14px; padding: 12px 14px; margin-top: 8px;
+    cursor: pointer;
+  }
+  .device-found-card .dev-name { font-size: 13.5px; font-weight: 600; }
+  .device-found-card .dev-sub { font-size: 11.5px; color: var(--ink-faint); }
+
+  /* ================= PICKER LISTS (language / TTS voice) ================= */
+  .picker-search {
+    display: flex; align-items: center; gap: 8px; margin-top: 18px;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border); border-radius: 12px; padding: 10px 12px;
+  }
+  .picker-search input { background: none; border: none; outline: none; color: var(--ink); font-family: 'Manrope', sans-serif; font-size: 13px; flex: 1; }
+  .picker-list { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
+  .picker-row {
+    display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; cursor: pointer;
+  }
+  .picker-row:hover, .picker-row:active { background: var(--glass-bg); }
+  .picker-row .picker-badge {
+    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; color: #0B0D14;
+  }
+  .picker-row .picker-name { font-size: 13.5px; font-weight: 600; flex: 1; }
+  .picker-row .picker-check { color: var(--partner); }
+  .voice-option {
+    display: flex; flex-direction: column; gap: 4px; padding: 14px;
+    border-radius: 14px; cursor: pointer; margin-bottom: 10px;
+    background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+  }
+  .voice-option.selected { border-color: var(--partner); background: rgba(79,209,197,0.08); }
+  .voice-option .v-name { font-size: 14px; font-weight: 700; }
+  .voice-option .v-desc { font-size: 12px; color: var(--ink-muted); }
+
+  /* ================= SUB-SCREENS (edit profile / privacy / help) ================= */
+  .sub-field { margin-top: 20px; }
+  .sub-field label { font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; }
+  .sub-field input {
+    display: block; width: 100%; margin-top: 8px; padding: 12px 14px; border-radius: 12px;
+    font-size: 14px; color: var(--ink); background: var(--glass-bg); backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); font-family: 'Manrope', sans-serif;
+  }
+  .sub-field .readonly-value { margin-top: 8px; padding: 12px 14px; border-radius: 12px; font-size: 14px; color: var(--ink-muted); background: var(--bg-raised); }
+  .sub-save-btn {
+    margin-top: 22px; background: linear-gradient(135deg, var(--self), #f0c98a); color: #1a1206;
+    font-weight: 700; font-size: 13.5px; text-align: center; padding: 13px; border-radius: 14px;
+    cursor: pointer; border: none; width: 100%;
+  }
+  .save-toast {
+    margin-top: 12px; font-size: 12.5px; color: var(--success); text-align: center; min-height: 16px;
+  }
+  .privacy-summary { font-size: 13px; color: var(--ink-muted); line-height: 1.6; margin-top: 16px; }
+  .privacy-summary a { color: var(--partner); }
+  .privacy-card {
+    display: flex; gap: 12px; padding: 16px; margin-top: 16px;
+    border-radius: 16px; background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+  }
+  .privacy-card .p-icon {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--partner) 20%, transparent); color: var(--partner);
+  }
+  .data-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  .data-chip {
+    font-size: 11px; font-weight: 600; padding: 5px 11px; border-radius: 20px;
+    background: color-mix(in srgb, var(--self) 16%, transparent); color: var(--ink-muted);
+    border: 1px solid var(--glass-border);
+  }
+  .danger-btn {
+    margin-top: 24px; background: rgba(232,115,95,0.1); color: var(--danger); font-weight: 700;
+    font-size: 13px; text-align: center; padding: 13px; border-radius: 14px; cursor: pointer;
+    border: 1px solid rgba(232,115,95,0.3); width: 100%;
+  }
+  .help-item { padding: 14px 0; border-bottom: 1px solid var(--line); display: flex; gap: 12px; }
+  .help-item .h-icon {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+    background: color-mix(in srgb, var(--self) 20%, transparent); color: var(--self);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .help-item .h-q { font-size: 13.5px; font-weight: 700; }
+  .help-item .h-a { font-size: 12.5px; color: var(--ink-muted); margin-top: 5px; line-height: 1.5; }
+  .contact-link {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-top: 20px; padding: 13px; text-align: center; color: var(--ink);
+    font-size: 13px; font-weight: 700; text-decoration: none;
+    border-radius: 14px; background: var(--glass-bg); border: 1px solid var(--glass-border);
+  }
+
+  /* ================= NOTIFICATION PANEL ================= */
+  .notif-panel {
+    position: absolute; top: 66px; right: 20px; width: 270px; z-index: 40;
+    background: rgba(18,21,30,0.96); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border); border-radius: 16px; padding: 6px;
+    box-shadow: 0 20px 50px -12px rgba(0,0,0,0.6);
+    display: none; flex-direction: column;
+  }
+  .notif-panel.open { display: flex; }
+  .notif-item { padding: 12px 12px; border-radius: 10px; }
+  .notif-item:hover { background: rgba(255,255,255,0.04); }
+  .notif-item .n-title { font-size: 12.5px; font-weight: 700; }
+  .notif-item .n-body { font-size: 11.5px; color: var(--ink-muted); margin-top: 3px; line-height: 1.4; }
+  .notif-empty { padding: 20px 12px; text-align: center; font-size: 12px; color: var(--ink-faint); }
+
+  /* ================= BADGE LOCKED STATE ================= */
+  .badge.locked { opacity: 0.35; filter: grayscale(1); }
+  .badge .badge-progress { font-size: 7.5px; color: var(--ink-faint); margin-top: 1px; font-family: 'IBM Plex Mono', monospace; }
+
+  /* ================= CONVERSATION ACTIVE ================= */
+  .convo-screen { justify-content: space-between; padding-top: 60px; }
+  .convo-header { text-align: center; }
+  .convo-header .with { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); }
+  .convo-header .partner-lang { font-size: 15px; color: var(--ink-muted); margin-top: 6px; }
+  .orb-stage { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+  .orb { position: absolute; border-radius: 50%; filter: blur(1px); }
+  .orb.self { width: 150px; height: 150px; background: radial-gradient(circle at 35% 35%, var(--self), var(--self-dim) 70%); left: 50%; transform: translateX(-78%); animation: breathe-self 3.4s ease-in-out infinite; box-shadow: 0 0 60px -10px rgba(232,169,76,0.5); }
+  .orb.partner { width: 150px; height: 150px; background: radial-gradient(circle at 65% 35%, var(--partner), var(--partner-dim) 70%); left: 50%; transform: translateX(-22%); animation: breathe-partner 3.4s ease-in-out infinite; animation-delay: 0.3s; box-shadow: 0 0 60px -10px rgba(79,209,197,0.5); transition: opacity 0.6s; }
+  .orb.partner.pending { opacity: 0.25; animation: none; box-shadow: none; }
+  @keyframes breathe-self { 0%,100% { transform: translateX(-78%) scale(1); opacity: 0.9; } 50% { transform: translateX(-62%) scale(1.08); opacity: 1; } }
+  @keyframes breathe-partner { 0%,100% { transform: translateX(-22%) scale(1); opacity: 0.9; } 50% { transform: translateX(-38%) scale(1.08); opacity: 1; } }
+  .convo-footer { text-align: center; }
+  .convo-footer .status-line { font-size: 13px; color: var(--ink-muted); }
+  .end-call-btn {
+    margin: 18px auto 0; width: 52px; height: 52px; border-radius: 50%;
+    background: var(--danger); display: flex; align-items: center; justify-content: center;
+    color: white; cursor: pointer;
+  }
+
+  /* ================= Preview nav (meta, not part of the product) =================
+     Hidden by default — this is a QA/dev screen-jumper, not a real product
+     control. Only shown with ?dev in the URL (see the DEV_MODE check in
+     the script below). A real user (or anyone reviewing product design)
+     should never see this. */
+  .preview-nav { display: none; gap: 6px; margin-top: 18px; flex-wrap: wrap; justify-content: center; max-width: 390px; }
+  .preview-nav button {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; padding: 7px 11px;
+    border-radius: 20px; border: 1px solid var(--line); background: transparent;
+    color: var(--ink-muted); cursor: pointer;
+  }
+  .preview-nav button.active { border-color: var(--ink); color: var(--ink); }
+
+  @media (max-width: 600px) {
+    /* This threshold needs to safely clear the widest current real phone
+       viewports, not just "look mobile-ish": iPhone 15/16 Pro Max are
+       430-440px CSS width — comfortably inside 600px, but would have
+       been ABOVE the previous 420px cutoff, meaning those specific real
+       devices would have shown the decorative desktop preview frame
+       (rounded corners, shadow, dead margins) instead of a proper
+       edge-to-edge app. 600px stays well clear of real tablets too. */
+    body { padding: 0; }
+    .meta-banner { display: none; }
+    .phone { width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; border: none; }
+    .preview-nav {
+      position: fixed; bottom: 78px; left: 50%; transform: translateX(-50%);
+      background: rgba(11,13,20,0.9); backdrop-filter: blur(6px);
+      padding: 6px; border-radius: 24px; z-index: 25; max-width: 94vw;
+    }
+  }
+</style>
+<!-- Google Identity Services — only ever activates if initGoogleSignIn()
+     (called on page load, see the script block below) finds a real
+     GOOGLE_CLIENT_ID from GET /api/auth/config. Loading this script
+     unconditionally is harmless/inert without that — it just sits idle. -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+  <!-- Offline banner — see js below (updateOnlineStatus). Hidden by
+       default; shown/hidden by real navigator.onLine + online/offline
+       events, not a cosmetic element. -->
+  <div class="offline-banner" id="offline-banner">You're offline — some features won't work until you're back online.</div>
+
+  <div class="meta-banner">
+    <div class="kicker">App Preview — full experience, not just the demo dashboard</div>
+    <p>This is the real product: a full modern app (Home, History,
+    Profile, Settings) with the conversation screen still minimal only for
+    the moment you're actually talking. Backend-connected — real login,
+    real data, real translation pipeline when configured with API keys.</p>
+  </div>
+
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="ambient-blob b1"></div>
+    <div class="ambient-blob b2"></div>
+    <div class="ambient-blob b3"></div>
+    <div class="app-body">
+
+      <!-- ============ LOGIN ============ -->
+      <div class="screen active" id="screen-login" style="padding-top:64px;">
+        <!-- Constellation/globe background art — original SVG, not a
+             stock photo (copyright-safe, works offline, matches the
+             brand palette exactly). Grounded in the actual tagline
+             ("bringing worlds together") rather than decoration for its
+             own sake: dots + connecting lines read as a world map /
+             network of people, which is literally what a translation
+             app connects. Positioned behind the login content only. -->
+
+        <!-- Flowing sound wave — continuously scrolling, not a static
+             shape: literally what the product does (a voice, flowing/
+             translating), as a large ambient background band. Built as
+             ONE period shape (<path id="waveUnit">, exactly 180 units
+             wide, returns to baseline y=60 at both edges) replicated via
+             <use> at exact 180-unit offsets (0/180/360/540) — then the
+             whole group is animated by exactly -180 (one period width).
+             This guarantees a truly seamless loop by construction: every
+             <use> copy is pixel-identical, so shifting by exactly one
+             copy's width can never produce a visible "jump," unlike
+             naively animating one long hand-built path by an arbitrary
+             distance that doesn't evenly divide its own repeat unit
+             (the mistake in an earlier draft of this that I caught
+             before shipping it — the math didn't actually line up). -->
+        <div class="login-flow-wave">
+          <svg viewBox="0 0 720 120" preserveAspectRatio="none">
+            <defs>
+              <path id="waveUnit" d="M0,60 C22.5,20 67.5,20 90,60 C112.5,100 157.5,100 180,60"
+                fill="none" stroke-width="2.5" />
+            </defs>
+            <g class="flow-group">
+              <use href="#waveUnit" x="0"   class="wu-self" />
+              <use href="#waveUnit" x="180" class="wu-partner" />
+              <use href="#waveUnit" x="360" class="wu-self" />
+              <use href="#waveUnit" x="540" class="wu-partner" />
+            </g>
+          </svg>
+        </div>
+
+        <svg class="login-constellation" viewBox="0 0 390 500" preserveAspectRatio="xMidYMid slice">
+          <g class="const-lines">
+            <line x1="60" y1="90" x2="140" y2="60" />
+            <line x1="140" y1="60" x2="230" y2="100" />
+            <line x1="230" y1="100" x2="330" y2="70" />
+            <line x1="40" y1="180" x2="140" y2="60" />
+            <line x1="330" y1="70" x2="350" y2="170" />
+            <line x1="40" y1="180" x2="120" y2="230" />
+            <line x1="120" y1="230" x2="230" y2="100" />
+            <line x1="270" y1="220" x2="350" y2="170" />
+            <line x1="120" y1="230" x2="270" y2="220" />
+            <line x1="60" y1="330" x2="120" y2="230" />
+            <line x1="270" y1="220" x2="320" y2="320" />
+            <line x1="60" y1="330" x2="180" y2="380" />
+            <line x1="180" y1="380" x2="320" y2="320" />
+          </g>
+          <g class="const-dots">
+            <circle cx="60" cy="90" r="3" />
+            <circle cx="140" cy="60" r="2.4" />
+            <circle cx="230" cy="100" r="3.4" />
+            <circle cx="330" cy="70" r="2.4" />
+            <circle cx="40" cy="180" r="2.8" />
+            <circle cx="350" cy="170" r="3" />
+            <circle cx="120" cy="230" r="2.6" />
+            <circle cx="270" cy="220" r="3.2" />
+            <circle cx="60" cy="330" r="2.4" />
+            <circle cx="320" cy="320" r="2.8" />
+            <circle cx="180" cy="380" r="3.4" />
+          </g>
+        </svg>
+
+        <!-- Slow-drifting ambient particles — small glowing points that
+             rise and fade, purely for depth/atmosphere. -->
+        <div class="login-particles">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+
+        <div class="wordmark login-in" style="animation-delay:0.05s;">VoxBuddy</div>
+        <div class="voice-waveform login-in" id="login-waveform" style="animation-delay:0.15s;"></div>
+        <div class="tagline login-in" style="animation-delay:0.24s;">Voice to voice, heart to heart,<br>bringing worlds together.</div>
+
+        <!-- Google Sign-In — alongside email/phone OTP, not replacing it.
+             Hidden by default; only shown if GET /api/auth/config reports
+             a real GOOGLE_CLIENT_ID configured server-side (see
+             initGoogleSignIn() below), same "real feature, graceful
+             absence" pattern as every mock-vs-real vendor toggle
+             elsewhere in this project — no broken half-configured button
+             for anyone who hasn't set this up. -->
+        <div id="google-signin-block" style="display:none;">
+          <div id="google-signin-container" style="display:flex;justify-content:center;margin:18px 0 4px;"></div>
+          <div class="or-divider"><span>or</span></div>
+        </div>
+
+        <!-- Phone/SMS login removed — email only, plus Google Sign-In
+             above. See PROGRESS.md for why: Brevo/Fast2SMS SMS delivery
+             added real cost/setup friction (a separate paid add-on or
+             DLT-template concerns) that email login doesn't have, for a
+             login method that wasn't adding real value once Google
+             Sign-In existed as the "fast" option. Backend SMS support
+             (auth_store's phone normalization, BrevoSMSOTPProvider,
+             Fast2SMSOTPProvider) is left in place, just unused from the
+             UI — cheap to bring back if ever wanted, nothing to lose by
+             not deleting working, tested code. -->
+
+        <!-- Step 1: enter identifier -->
+        <div class="login-step active login-in" id="login-step-identifier" style="animation-delay:0.32s;">
+          <div class="login-field">
+            <label id="login-identifier-label">Email address</label>
+            <input type="text" id="login-identifier" placeholder="xyz@gmail.com" autocomplete="email" />
+          </div>
+          <button class="login-cta" id="send-code-btn" onclick="requestLoginCode()">Send code</button>
+        </div>
+
+        <!-- Step 2: enter OTP -->
+        <div class="login-step" id="login-step-otp">
+          <div class="login-field">
+            <label>6-digit code sent to <span id="otp-sent-to"></span></label>
+            <input type="text" id="login-otp" class="otp-input" placeholder="••••••" maxlength="6" inputmode="numeric" />
+          </div>
+          <button class="login-cta" id="verify-code-btn" onclick="verifyLoginCode()">Verify & continue</button>
+          <div class="login-meta">
+            <span id="resend-timer"></span>
+            <a id="resend-link" onclick="requestLoginCode()" style="display:none;">Resend code</a>
+            &nbsp;·&nbsp;
+            <a onclick="backToIdentifierStep()">Change identifier</a>
+          </div>
+        </div>
+
+        <div class="login-error" id="login-error"></div>
+      </div>
+
+      <!-- ============ SETUP ============ -->
+      <div class="screen" id="screen-setup" style="padding-top:56px;">
+        <div class="wordmark">VoxBuddy</div>
+        <div class="tagline">Voice to voice, heart to heart,<br>bringing worlds together.</div>
+
+        <div class="step-progress" id="setup-progress">
+          <div class="seg done" data-step="1"></div>
+          <div class="seg" data-step="2"></div>
+          <div class="seg" data-step="3"></div>
+          <div class="seg" data-step="4"></div>
+        </div>
+
+        <!-- Step 1: name -->
+        <div class="wizard-pane active" id="setup-pane-1">
+          <div class="wizard-title">What should we call you?</div>
+          <div class="wizard-sub">This is how you'll show up in your own profile — nobody else sees it during a conversation.</div>
+          <div style="display:flex; justify-content:center; margin:20px 0 4px;">
+            <div class="avatar-lg" id="setup-name-avatar" style="width:56px;height:56px;font-size:22px;opacity:0.5;">?</div>
+          </div>
+          <div class="sub-field">
+            <label>Your name</label>
+            <input type="text" id="setup-name" placeholder="e.g. Adarsh" autocomplete="name"
+              oninput="const a=document.getElementById('setup-name-avatar'); a.textContent=(this.value.trim()[0]||'?').toUpperCase(); a.style.opacity=this.value.trim()?1:0.5;" />
+          </div>
+          <button class="setup-cta" id="setup-next-1" disabled onclick="setupGoToStep(2)">Continue</button>
+        </div>
+
+        <!-- Step 2: mother tongue -->
+        <div class="wizard-pane" id="setup-pane-2">
+          <div class="wizard-title">What language do you speak?</div>
+          <div class="wizard-sub">VoxBuddy translates everything <em>into</em> this language for you. The other person's language is always detected automatically — you'll never need to set that.</div>
+          <div class="sub-field" style="margin-top:16px;">
+            <div class="settings-row" style="padding:0; cursor:pointer;" onclick="openPicker('language', 'setup')">
+              <span class="s-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M5 8h14M5 8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/></svg></span>
+              <span class="s-label" id="setup-lang-label">Choose your language</span>
+              <svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--ink-faint)"><path d="m9 18 6-6-6-6"/></svg>
+            </div>
+          </div>
+          <button class="setup-cta" id="setup-next-2" disabled onclick="setupGoToStep(3)" style="margin-top:24px;">Continue</button>
+          <div class="setup-back" onclick="setupGoToStep(1)">Back</div>
+        </div>
+
+        <!-- Step 3: TTS voice -->
+        <div class="wizard-pane" id="setup-pane-3">
+          <div class="wizard-title">Pick a voice</div>
+          <div class="wizard-sub">This is the voice you'll hear translations spoken in.</div>
+          <div style="margin-top:18px;">
+            <div class="voice-option selected" data-voice="warm" onclick="selectSetupVoice('warm')">
+              <div class="v-name">Warm</div><div class="v-desc">Soft, friendly — good for everyday conversation</div>
+            </div>
+            <div class="voice-option" data-voice="neutral" onclick="selectSetupVoice('neutral')">
+              <div class="v-name">Neutral</div><div class="v-desc">Clear and even, no strong character</div>
+            </div>
+            <div class="voice-option" data-voice="bright" onclick="selectSetupVoice('bright')">
+              <div class="v-name">Bright</div><div class="v-desc">Energetic, a bit faster-paced</div>
+            </div>
+          </div>
+          <button class="setup-cta" onclick="setupGoToStep(4)" style="margin-top:10px;">Continue</button>
+          <div class="setup-back" onclick="setupGoToStep(2)">Back</div>
+        </div>
+
+        <!-- Step 4: earbuds -->
+        <div class="wizard-pane" id="setup-pane-4">
+          <div class="wizard-title" style="text-align:center;">Connect your earbuds</div>
+          <div class="wizard-sub" style="text-align:center;">Any Bluetooth earbuds work — no VoxBuddy hardware needed.</div>
+          <div class="connect-visual">
+            <div class="earbud-icon-wrap" id="earbud-visual">
+              <svg class="icon" viewBox="0 0 24 24" style="width:34px;height:34px;color:var(--ink-muted)"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg>
+            </div>
+            <div class="connect-status-title" id="earbud-status-title">Ready to scan</div>
+            <div class="connect-status-sub" id="earbud-status-sub">Tap below to look for nearby earbuds</div>
+            <div id="earbud-device-slot" style="width:100%;"></div>
+          </div>
+          <button class="setup-cta" id="setup-scan-btn" onclick="startEarbudScan()">Scan for earbuds</button>
+          <div class="setup-back" onclick="finishSetup(true)" id="setup-skip">Skip for now</div>
+        </div>
+      </div>
+
+      <!-- ============ LANGUAGE / VOICE PICKER (shared: Setup + Settings) ============ -->
+      <div class="screen" id="screen-picker">
+        <div class="detail-header">
+          <div class="back-btn" onclick="closePicker()">
+            <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+          </div>
+          <div><div class="detail-title" id="picker-title">Choose your language</div></div>
+        </div>
+        <div class="picker-search" id="picker-search-wrap">
+          <svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--ink-faint)"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="picker-search" placeholder="Search languages" oninput="renderPickerList()" />
+        </div>
+        <div class="picker-list" id="picker-list"></div>
+      </div>
+
+      <!-- ============ EDIT PROFILE ============ -->
+      <div class="screen" id="screen-edit-profile">
+        <div class="detail-header">
+          <div class="back-btn" onclick="goTo('screen-profile')"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+          <div><div class="detail-title">Edit profile</div></div>
+        </div>
+        <div style="display:flex; justify-content:center; margin-top:8px;">
+          <div class="avatar-lg" id="edit-profile-avatar" style="width:64px;height:64px;font-size:24px;">A</div>
+        </div>
+        <div class="sub-field">
+          <label>Name</label>
+          <input type="text" id="edit-profile-name" oninput="document.getElementById('edit-profile-avatar').textContent = (this.value.trim()[0] || '?').toUpperCase()" />
+        </div>
+        <div class="sub-field">
+          <label>Signed in with</label>
+          <div class="readonly-value" id="edit-profile-identifier">—</div>
+        </div>
+        <button class="sub-save-btn" onclick="saveProfileEdit()">Save changes</button>
+        <div class="save-toast" id="edit-profile-toast"></div>
+      </div>
+
+      <!-- ============ PRIVACY & DATA ============ -->
+      <div class="screen" id="screen-privacy-data">
+        <div class="detail-header">
+          <div class="back-btn" onclick="goTo('screen-settings')"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+          <div><div class="detail-title">Privacy & data</div></div>
+        </div>
+        <div class="privacy-card">
+          <div class="p-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <div>
+            <p style="font-size:13px;color:var(--ink-muted);line-height:1.6;margin:0;">Your conversation history is private to your account. That's it — no ads, nothing sold.</p>
+            <div class="data-chip-row">
+              <span class="data-chip">Email / phone</span>
+              <span class="data-chip">Saved conversations</span>
+              <span class="data-chip">Usage stats</span>
+            </div>
+          </div>
+        </div>
+        <div class="privacy-summary">
+          <p>Read the full privacy policy at <a href="/privacy" target="_blank">/privacy</a>, or the <a href="/terms" target="_blank">Terms of Service</a> at /terms.</p>
+        </div>
+        <div class="danger-btn" onclick="clearMyHistory()">Clear my conversation history</div>
+        <div class="save-toast" id="privacy-toast"></div>
+      </div>
+
+      <!-- ============ HELP & FEEDBACK ============ -->
+      <div class="screen" id="screen-help">
+        <div class="detail-header">
+          <div class="back-btn" onclick="goTo('screen-settings')"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+          <div><div class="detail-title">Help & feedback</div></div>
+        </div>
+        <div class="help-item">
+          <div class="h-icon">Q</div>
+          <div>
+            <div class="h-q">How does VoxBuddy know who I'm talking to?</div>
+            <div class="h-a">It listens for turn-taking patterns and voice consistency — no manual selection needed. See the Conversation screen while it's happening.</div>
+          </div>
+        </div>
+        <div class="help-item">
+          <div class="h-icon">Q</div>
+          <div>
+            <div class="h-q">Can I talk to more than one person at once?</div>
+            <div class="h-a">Yes — VoxBuddy can follow two people in the same conversation, like a couple at a market stall.</div>
+          </div>
+        </div>
+        <div class="help-item">
+          <div class="h-icon">Q</div>
+          <div>
+            <div class="h-q">Is my conversation history private?</div>
+            <div class="h-a">Yes, tied to your account only. See Privacy & data in Settings to clear it anytime.</div>
+          </div>
+        </div>
+        <a class="contact-link" href="mailto:adarsh.ks.tech@gmail.com">
+          <svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+          Contact us — VoxBuddy Helpline!
+        </a>
+      </div>
+
+      <!-- ============ TTS VOICE PICKER (Settings) ============ -->
+      <div class="screen" id="screen-voice-picker">
+        <div class="detail-header">
+          <div class="back-btn" onclick="goTo('screen-settings')"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+          <div><div class="detail-title">TTS voice</div></div>
+        </div>
+        <div style="margin-top:20px;">
+          <div class="voice-option" data-voice="warm" onclick="selectSettingsVoice('warm')">
+            <div class="v-name">Warm</div><div class="v-desc">Soft, friendly — good for everyday conversation</div>
+          </div>
+          <div class="voice-option" data-voice="neutral" onclick="selectSettingsVoice('neutral')">
+            <div class="v-name">Neutral</div><div class="v-desc">Clear and even, no strong character</div>
+          </div>
+          <div class="voice-option" data-voice="bright" onclick="selectSettingsVoice('bright')">
+            <div class="v-name">Bright</div><div class="v-desc">Energetic, a bit faster-paced</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ HOME ============ -->
+      <div class="screen" id="screen-home">
+        <div class="top-row" style="position:relative;">
+          <div>
+            <div class="greeting-small" id="home-greeting-time">Hello</div>
+            <div class="greeting-big" id="home-greeting-name">there</div>
+          </div>
+          <div class="icon-btn" onclick="toggleNotifications(event)"><div class="dot" id="notif-dot" style="display:none;"></div>
+            <svg class="icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          </div>
+          <div class="notif-panel" id="notif-panel"></div>
+        </div>
+
+        <div class="hero-card">
+          <div class="hero-orb-deco"></div>
+          <div class="hero-label">Ready when you are</div>
+          <div class="hero-title">Start a conversation in any language</div>
+          <div class="voice-waveform" id="home-waveform" style="height:28px;margin:10px 0 2px;justify-content:flex-start;"></div>
+          <button class="start-btn">
+            <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg>
+            Start Conversation
+          </button>
+          <!-- Real mic capture (getUserMedia -> PCM16 -> /ws/{id}/audio),
+               separate from the scripted DEMO_EXCHANGE. Off by default so
+               the existing demo flow is unaffected; flip it on to actually
+               speak into your own microphone. See startMicCapture() below
+               for what "real" means here with VOXBUDDY_ASR_PROVIDER=mock
+               (transport-only, no real transcription) vs =assemblyai. -->
+          <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px;color:var(--ink-faint);cursor:pointer;">
+            <input type="checkbox" id="use-real-mic-toggle" style="width:15px;height:15px;">
+            Use real microphone instead of demo script
+          </label>
+        </div>
+
+        <div class="lang-row">
+          <div class="lang-pill">
+            <div class="lang-badge en" id="home-lang-badge">EN</div>
+            <div>
+              <div class="lang-pill-label">You speak</div>
+              <div class="lang-pill-value" id="home-lang-value">English</div>
+            </div>
+          </div>
+          <div class="autodetect-pill">
+            <span class="pulse-dot"></span>
+            <div>
+              <div class="lang-pill-label">Them</div>
+              <div class="lang-pill-value">Auto-detect</div>
+            </div>
+          </div>
+        </div>
+        <div class="detect-hint">VoxBuddy figures out their language automatically once they start talking — nothing for them to set up.</div>
+
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-num" id="stat-conversations">–</div><div class="stat-label">Conversations</div></div>
+          <div class="stat-card"><div class="stat-num" id="stat-languages">–</div><div class="stat-label">Languages</div></div>
+          <div class="stat-card"><div class="stat-num" id="stat-talked">–</div><div class="stat-label">Talked</div></div>
+        </div>
+
+        <div class="section-title">Recent conversations <span class="see-all" onclick="goTo('screen-history')">See all</span></div>
+        <div id="home-recent-list">
+          <div class="convo-card-empty" style="font-size:12.5px;color:var(--ink-faint);padding:8px 2px;">No conversations yet — tap "Start Conversation" above.</div>
+        </div>
+
+        <div class="tip-card">
+          <div class="tip-icon">
+            <svg class="icon" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="M17 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div><div class="tip-title">Group conversations now supported</div>
+          <div class="tip-desc">VoxBuddy can now follow two people talking to you at once — handy for couples or meetings.</div></div>
+        </div>
+      </div>
+
+      <!-- ============ HISTORY ============ -->
+      <div class="screen" id="screen-history">
+        <div class="top-row"><div class="greeting-big" style="margin-top:0">History</div></div>
+        <div class="search-bar">
+          <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input placeholder="Search conversations" />
+        </div>
+        <div class="filter-row">
+          <div class="filter-chip selected">All</div>
+          <div class="filter-chip">This week</div>
+          <div class="filter-chip">Hindi</div>
+          <div class="filter-chip">French</div>
+          <div class="filter-chip">Spanish</div>
+        </div>
+
+        <div id="history-list" style="margin-top:18px;">
+          <div style="font-size:12.5px;color:var(--ink-faint);padding:8px 2px;">No conversations yet.</div>
+        </div>
+      </div>
+
+      <!-- ============ TRANSCRIPT DETAIL ============ -->
+      <div class="screen" id="screen-detail">
+        <div class="detail-header">
+          <div class="back-btn" onclick="goTo('screen-history')">
+            <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+          </div>
+          <div>
+            <div class="detail-title">Conversation</div>
+            <div class="detail-sub" id="detail-sub"></div>
+          </div>
+        </div>
+        <div class="transcript-list" id="transcript-list"></div>
+      </div>
+
+      <!-- ============ PROFILE ============ -->
+      <div class="screen" id="screen-profile">
+        <div class="top-row"><div class="greeting-big" style="margin-top:0">Profile</div>
+          <div class="icon-btn"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+        </div>
+
+        <div class="profile-header">
+          <div class="avatar-lg">A</div>
+          <div class="profile-name">Adarsh</div>
+          <div class="profile-flair" id="profile-flair"></div>
+          <div class="profile-sub">VIT Bhopal · Member since 2026</div>
+          <div class="edit-profile-btn">Edit profile</div>
+        </div>
+
+        <div class="profile-stats-grid">
+          <div class="profile-stat"><div class="num" id="profile-stat-convos">–</div><div class="lbl">CONVOS</div></div>
+          <div class="profile-stat"><div class="num" id="profile-stat-langs">–</div><div class="lbl">LANGUAGES</div></div>
+          <!-- Real day streak — computed backend-side in
+               persistence.get_day_streak from actual conversation dates,
+               replacing the hardcoded "12" that was flagged as fake. -->
+          <div class="profile-stat"><div class="num" id="profile-stat-streak">–</div><div class="lbl">DAY STREAK</div></div>
+        </div>
+
+        <div class="section-title">Badges</div>
+        <div class="badge-row" id="badge-row"></div>
+
+        <div class="section-title">Languages spoken with</div>
+        <div class="settings-card" style="padding: 4px 14px;" id="lang-breakdown-card">
+          <div class="lang-proficiency-row" style="border:none; color:var(--ink-faint); font-size:12.5px;">No conversations yet</div>
+        </div>
+
+        <div class="signout-btn" onclick="logout()">Sign out</div>
+      </div>
+
+      <!-- ============ SETTINGS ============ -->
+      <div class="screen" id="screen-settings">
+        <div class="top-row"><div class="greeting-big" style="margin-top:0">Settings</div></div>
+
+        <div class="settings-group">
+          <div class="settings-group-label">Account</div>
+          <div class="settings-card">
+            <div class="settings-row" style="cursor:pointer" onclick="openEditProfile()"><span class="s-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a6 6 0 0 1 12 0v2"/></svg></span><span class="s-label">Edit profile</span><svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--ink-faint)"><path d="m9 18 6-6-6-6"/></svg></div>
+            <div class="settings-row" style="cursor:pointer" onclick="goTo('screen-privacy-data')"><span class="s-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><span class="s-label">Privacy & data</span><svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--ink-faint)"><path d="m9 18 6-6-6-6"/></svg></div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-label">Conversation</div>
+          <div class="settings-card">
+            <div class="settings-row" style="cursor:pointer" onclick="openPicker('language', 'settings')"><span class="s-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M5 8h14M5 8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/></svg></span><span class="s-label">My language</span><span class="s-value" id="settings-lang-value">English</span></div>
+            <div class="settings-row" style="cursor:pointer" onclick="goTo('screen-voice-picker')"><span class="s-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg></span><span class="s-label">TTS voice</span><span class="s-value" id="settings-voice-value">Warm</span></div>
+            <div class="settings-row"><span class="s-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span><span class="s-label">Auto-detect their language</span><div class="toggle on" style="cursor:default; opacity:0.6;" title="Always on — this is the core of how VoxBuddy works"><div class="knob"></div></div></div>
+            <div class="settings-row"><span class="s-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M4 6h16M4 12h16M4 18h7"/></svg></span><span class="s-label">Live transcript by default</span><div class="toggle" onclick="this.classList.toggle('on')"><div class="knob"></div></div></div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-label">Devices</div>
+          <div class="settings-card">
+            <div class="settings-row"><span class="s-icon" style="color:var(--success)"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="m6.5 6.5 11 11L12 23V1l5.5 5.5-11 11"/></svg></span><span class="s-label">Earbuds</span><span class="s-value" id="settings-earbud-value" style="color:var(--ink-faint)">Not connected</span></div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-label">Accessibility</div>
+          <div class="settings-card">
+            <div class="settings-row"><span class="s-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></span><span class="s-label">Haptic feedback</span><div class="toggle on" onclick="this.classList.toggle('on')"><div class="knob"></div></div></div>
+            <div class="settings-row"><span class="s-icon"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></span><span class="s-label">Larger text</span><div class="toggle" onclick="this.classList.toggle('on')"><div class="knob"></div></div></div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-group-label">About</div>
+          <div class="settings-card">
+            <div class="settings-row"><span class="s-label">Version</span><span class="s-value">1.0.0 (Phase 1)</span></div>
+            <div class="settings-row" style="cursor:pointer" onclick="goTo('screen-help')"><span class="s-label">Help & feedback</span><svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--ink-faint)"><path d="m9 18 6-6-6-6"/></svg></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ CONVERSATION ACTIVE (full takeover) ============ -->
+      <div class="screen convo-screen" id="screen-convo" style="padding-top:60px;">
+        <div class="convo-header"><div class="with">Talking with</div><div class="partner-lang">Hindi speaker</div></div>
+        <div class="orb-stage">
+          <div class="orb self"></div><div class="orb partner"></div>
+          <!-- Live-reactive when real mic capture is on (see
+               updateConvoWaveformLive, driven by real frameRMS energy from
+               the actual mic signal, same computation the noise gate
+               uses) — a scrolling visualizer of your actual voice, not a
+               looping decorative animation. Falls back to the ambient
+               CSS animation for the scripted demo path, since there's no
+               real signal to visualize there. -->
+          <div class="voice-waveform" id="convo-waveform" style="position:absolute;bottom:18%;height:36px;"></div>
+        </div>
+        <div class="convo-footer">
+          <div class="status-line" id="convo-status-line">Just talk naturally.</div>
+          <div class="end-call-btn">
+            <svg class="icon" viewBox="0 0 24 24" style="stroke:white"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.4 12.4 0 0 0 2.81.7A2 2 0 0 1 22 17.72V20a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 2 4.18 2 2 0 0 1 4 2h2.28a2 2 0 0 1 2 1.72 12.4 12.4 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11z"/><line x1="22" y1="2" x2="2" y2="22"/></svg>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============ Persistent bottom tab bar (hidden during setup/conversation) ============ -->
+    <div class="tabbar" id="tabbar">
+      <button class="tab-btn active" data-tab="screen-home" onclick="goTo('screen-home')">
+        <svg class="icon" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>Home
+      </button>
+      <button class="tab-btn" data-tab="screen-history" onclick="goTo('screen-history')">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>History
+      </button>
+      <button class="tab-btn" data-tab="screen-profile" onclick="goTo('screen-profile')">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a6 6 0 0 1 12 0v2"/></svg>Profile
+      </button>
+      <button class="tab-btn" data-tab="screen-settings" onclick="goTo('screen-settings')">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings
+      </button>
+    </div>
+  </div>
+
+  <div class="preview-nav" id="preview-nav"></div>
+
+  <script>
+    const NO_TABBAR_SCREENS = ["screen-login", "screen-setup", "screen-convo", "screen-picker", "screen-edit-profile", "screen-privacy-data", "screen-help", "screen-voice-picker"];
+    const ALL_SCREENS = ["screen-login", "screen-setup", "screen-home", "screen-history", "screen-detail", "screen-profile", "screen-settings", "screen-convo", "screen-picker", "screen-edit-profile", "screen-privacy-data", "screen-help", "screen-voice-picker"];
+    const LABELS = { "screen-login": "Login", "screen-setup": "Setup", "screen-home": "Home", "screen-history": "History", "screen-detail": "Transcript", "screen-profile": "Profile", "screen-settings": "Settings", "screen-convo": "Conversation", "screen-picker": "Picker", "screen-edit-profile": "Edit Profile", "screen-privacy-data": "Privacy", "screen-help": "Help", "screen-voice-picker": "Voice" };
+
+    // ---- Signature visual: the voice waveform ---------------------------
+    // Interpolates bar color from --self (amber, "you") to --partner
+    // (teal, "them") across the row, so the waveform literally visualizes
+    // two voices meeting — grounded in what VoxBuddy actually does,
+    // rather than a generic decorative shape.
+    function renderWaveform(containerId, barCount = 18) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      const selfRGB = [232, 169, 76];    // var(--self) #E8A94C
+      const partnerRGB = [79, 209, 197]; // var(--partner) #4FD1C5
+      let html = '';
+      for (let i = 0; i < barCount; i++) {
+        const t = i / (barCount - 1);
+        const r = Math.round(selfRGB[0] + (partnerRGB[0] - selfRGB[0]) * t);
+        const g = Math.round(selfRGB[1] + (partnerRGB[1] - selfRGB[1]) * t);
+        const b = Math.round(selfRGB[2] + (partnerRGB[2] - selfRGB[2]) * t);
+        // Deterministic pseudo-random stagger (not Math.random — keeps
+        // the waveform's rhythm consistent across re-renders instead of
+        // reshuffling every time renderWaveform() is called again).
+        const delay = (Math.sin(i * 1.7) * 0.35).toFixed(2);
+        html += `<div class="wave-bar" style="background:rgb(${r},${g},${b});animation-delay:${delay}s"></div>`;
+      }
+      el.innerHTML = html;
+    }
+
+    // Scrolling live visualizer, driven by real mic energy (frameRMS —
+    // the exact same computation the noise gate uses, so what you see is
+    // literally the same signal deciding whether audio gets sent).
+    // Classic left-shift-and-append scrolling meter: each frame, every
+    // bar takes on the height of the bar to its right, and the new
+    // energy reading is appended at the end.
+    function updateConvoWaveformLive(energy) {
+      const el = document.getElementById('convo-waveform');
+      if (!el || !el.classList.contains('live-driven')) return;
+      const bars = el.children;
+      if (!bars.length) return;
+      const heightPx = Math.min(36, Math.max(4, energy * 260));
+      for (let i = 0; i < bars.length - 1; i++) {
+        bars[i].style.height = bars[i + 1].style.height || '4px';
+      }
+      bars[bars.length - 1].style.height = heightPx + 'px';
+    }
+
+    function goTo(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+
+      const tabbar = document.getElementById('tabbar');
+      tabbar.style.display = NO_TABBAR_SCREENS.includes(id) ? 'none' : 'flex';
+
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === id || (id === 'screen-detail' && b.dataset.tab === 'screen-history'));
+      });
+
+      document.querySelectorAll('.preview-nav button').forEach(b => {
+        b.classList.toggle('active', b.dataset.screen === id);
+      });
+
+      if (id === 'screen-history' && typeof refreshHistory === 'function') refreshHistory();
+      if (id === 'screen-profile' && typeof refreshStats === 'function') { refreshStats(); refreshLanguageBreakdown(); }
+    }
+
+    const DEV_MODE = new URLSearchParams(location.search).has('dev')
+      || localStorage.getItem('voxbuddy_dev_nav') === '1';
+    const nav = document.getElementById('preview-nav');
+    if (DEV_MODE) {
+      nav.style.display = 'flex';
+      ALL_SCREENS.forEach(id => {
+        const btn = document.createElement('button');
+        btn.textContent = LABELS[id];
+        btn.dataset.screen = id;
+        btn.onclick = () => goTo(id);
+        nav.appendChild(btn);
+      });
+    }
+
+    // =====================================================================
+    // Real backend wiring. Session creation, self-enrollment, live
+    // conversation over the real CIE + Translation pipeline, and now
+    // conversation history — all genuinely backed by the FastAPI app
+    // serving this page (see persistence.py). Profile stats/badges are
+    // still frontend mock data (no user/auth system yet — PROGRESS.md
+    // Phase 4).
+    // =====================================================================
+    const AppState = { sessionId: null, ws: null, turnsThisSession: 0, intentionalClose: false, reconnectAttempts: 0 };
+
+    // =====================================================================
+    // Language data + a deterministic color per language code (so we don't
+    // need a hand-written CSS class for all 20 languages) — shared by the
+    // Setup wizard's language step, Settings' "My language," and the real
+    // "Languages spoken with" breakdown on Profile.
+    // =====================================================================
+    const LANGUAGES = [
+      { code: 'en', name: 'English' }, { code: 'hi', name: 'Hindi' }, { code: 'es', name: 'Spanish' },
+      { code: 'fr', name: 'French' }, { code: 'de', name: 'German' }, { code: 'zh', name: 'Mandarin Chinese' },
+      { code: 'ja', name: 'Japanese' }, { code: 'ko', name: 'Korean' }, { code: 'ar', name: 'Arabic' },
+      { code: 'pt', name: 'Portuguese' }, { code: 'ru', name: 'Russian' }, { code: 'it', name: 'Italian' },
+      { code: 'bn', name: 'Bengali' }, { code: 'pa', name: 'Punjabi' }, { code: 'ta', name: 'Tamil' },
+      { code: 'te', name: 'Telugu' }, { code: 'ur', name: 'Urdu' }, { code: 'tr', name: 'Turkish' },
+      { code: 'vi', name: 'Vietnamese' }, { code: 'id', name: 'Indonesian' },
+    ];
+
+    function langColor(code) {
+      let hash = 0;
+      for (const c of code) hash = (hash * 31 + c.charCodeAt(0)) % 360;
+      return `hsl(${hash}, 60%, 52%)`;
+    }
+
+    function languageInfo(code) {
+      return LANGUAGES.find(l => l.code === code) || { code, name: code.toUpperCase() };
+    }
+
+    // =====================================================================
+    // Shared language/voice picker — used by BOTH the Setup wizard and
+    // Settings, tracked via PickerState.context so selecting a value knows
+    // where to write it back to.
+    // =====================================================================
+    const PickerState = { kind: null, context: null, selected: null };
+
+    function openPicker(kind, context) {
+      PickerState.kind = kind;
+      PickerState.context = context;
+      PickerState.selected = context === 'setup' ? SetupState.language : (AuthState.user?.preferred_language || null);
+      document.getElementById('picker-title').textContent = 'Choose your language';
+      document.getElementById('picker-search').value = '';
+      renderPickerList();
+      goTo('screen-picker');
+    }
+
+    function closePicker() {
+      goTo(PickerState.context === 'setup' ? 'screen-setup' : 'screen-settings');
+    }
+
+    function renderPickerList() {
+      const query = (document.getElementById('picker-search').value || '').toLowerCase();
+      const list = document.getElementById('picker-list');
+      const filtered = LANGUAGES.filter(l => l.name.toLowerCase().includes(query));
+      list.innerHTML = filtered.map(l => `
+        <div class="picker-row" onclick="selectPickerLanguage('${l.code}')">
+          <div class="picker-badge" style="background:${langColor(l.code)}">${l.code.toUpperCase()}</div>
+          <div class="picker-name">${l.name}</div>
+          ${PickerState.selected === l.code ? '<svg class="icon picker-check" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="M20 6 9 17l-5-5"/></svg>' : ''}
+        </div>`).join('');
+    }
+
+    async function selectPickerLanguage(code) {
+      PickerState.selected = code;
+      if (PickerState.context === 'setup') {
+        SetupState.language = code;
+        document.getElementById('setup-lang-label').textContent = languageInfo(code).name;
+        document.getElementById('setup-next-2').disabled = false;
+        closePicker();
+        return;
+      }
+      // Settings context — save immediately via the real API, not just UI state.
+      try {
+        const res = await fetch('/api/auth/preferences', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ preferred_language: code }),
+        });
+        const user = await res.json();
+        AuthState.user = user;
+        document.getElementById('settings-lang-value').textContent = languageInfo(code).name;
+      } catch (err) {
+        console.warn('Could not save language preference.', err);
+      }
+      closePicker();
+    }
+
+    async function selectSettingsVoice(voice) {
+      try {
+        const res = await fetch('/api/auth/preferences', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ tts_voice: voice }),
+        });
+        const user = await res.json();
+        AuthState.user = user;
+        document.getElementById('settings-voice-value').textContent = voice.charAt(0).toUpperCase() + voice.slice(1);
+      } catch (err) {
+        console.warn('Could not save voice preference.', err);
+      }
+      goTo('screen-settings');
+    }
+
+    // =====================================================================
+    // Setup wizard — a real 4-step flow that actually collects and saves
+    // data (name, mother tongue, TTS voice, earbud connection), instead of
+    // three static slides with a button that did nothing with them.
+    // =====================================================================
+    const SetupState = { name: '', language: null, voice: 'warm', earbudConnected: false };
+
+    function setupGoToStep(step) {
+      document.querySelectorAll('.wizard-pane').forEach(p => p.classList.remove('active'));
+      document.getElementById(`setup-pane-${step}`).classList.add('active');
+      document.querySelectorAll('#setup-progress .seg').forEach(seg => {
+        seg.classList.toggle('done', parseInt(seg.dataset.step, 10) <= step);
+      });
+    }
+
+    document.addEventListener('input', (e) => {
+      if (e.target.id === 'setup-name') {
+        SetupState.name = e.target.value.trim();
+        document.getElementById('setup-next-1').disabled = SetupState.name.length === 0;
+      }
+    });
+
+    function selectSetupVoice(voice) {
+      SetupState.voice = voice;
+      document.querySelectorAll('#setup-pane-3 .voice-option').forEach(el => {
+        el.classList.toggle('selected', el.dataset.voice === voice);
+      });
+    }
+
+    let scanTimeoutHandle = null;
+
+    // ---- Real earbud pairing (native only) -----------------------------
+    // Uses @capacitor-community/bluetooth-le's underlying "BluetoothLe"
+    // plugin, called through the raw window.Capacitor.Plugins bridge that
+    // Capacitor injects automatically into a native WebView — this file
+    // is plain HTML/JS with no bundler, so importing the npm package's
+    // `BleClient` wrapper class isn't possible here; the plugin object
+    // itself works fine without a bundler since native Capacitor exposes
+    // it directly once the plugin is installed (see mobile/package.json)
+    // and `npx cap sync` has run.
+    //
+    // HONESTY NOTE, same as the AssemblyAI/ElevenLabs/Gemini adapters:
+    // this is real code against the plugin's documented API shape, not a
+    // simulation — but it has never run against a real BLE radio or real
+    // earbuds. This build environment has no Bluetooth hardware and no
+    // native runtime at all (it's a browser, not Android/iOS). It will
+    // only actually execute once you build+install the native app on
+    // your own device. If it breaks, tell me exactly what error Android
+    // Studio's Logcat (or Xcode's console) shows — that's the fastest
+    // path to a real fix versus me guessing blind a second time.
+    function isNativePlatform() {
+      return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    }
+
+    async function startEarbudScan() {
+      if (isNativePlatform()) {
+        return startEarbudScanNative();
+      }
+      return startEarbudScanSimulated();
+    }
+
+    async function startEarbudScanNative() {
+      const wrap = document.getElementById('earbud-visual');
+      const title = document.getElementById('earbud-status-title');
+      const sub = document.getElementById('earbud-status-sub');
+      const scanBtn = document.getElementById('setup-scan-btn');
+      const Ble = window.Capacitor.Plugins.BluetoothLe;
+
+      wrap.classList.add('scanning');
+      title.textContent = 'Scanning…';
+      sub.textContent = 'Looking for nearby Bluetooth earbuds';
+      scanBtn.disabled = true;
+      scanBtn.textContent = 'Scanning…';
+
+      const foundDevices = new Map();
+      let listenerHandle = null;
+
+      try {
+        await Ble.initialize();
+        listenerHandle = await Ble.addListener('onScanResult', (result) => {
+          const device = result && result.device;
+          if (!device || !device.deviceId || foundDevices.has(device.deviceId)) return;
+          // Most BLE peripherals advertise a name; earbuds that don't
+          // broadcast one are filtered out rather than shown as a
+          // confusing blank entry — the same real-world filtering the
+          // Web Bluetooth / system Bluetooth picker does.
+          if (!device.name) return;
+          foundDevices.set(device.deviceId, device);
+          renderFoundEarbudDevices(foundDevices);
+        });
+        await Ble.requestLEScan({});
+      } catch (err) {
+        console.warn('BLE scan failed to start:', err);
+        title.textContent = 'Bluetooth unavailable';
+        sub.textContent = String(err && err.message || err);
+        scanBtn.disabled = false;
+        scanBtn.textContent = 'Scan for earbuds';
+        wrap.classList.remove('scanning');
+        return;
+      }
+
+      scanTimeoutHandle = setTimeout(async () => {
+        try { await Ble.stopLEScan(); } catch (e) { /* already stopped */ }
+        if (listenerHandle) listenerHandle.remove();
+        wrap.classList.remove('scanning');
+        if (foundDevices.size === 0) {
+          title.textContent = 'No devices found';
+          sub.textContent = 'Make sure your earbuds are in pairing mode, then try again.';
+          scanBtn.disabled = false;
+          scanBtn.textContent = 'Scan again';
+        } else {
+          title.textContent = 'Device found';
+          sub.textContent = 'Tap one below to connect';
+          scanBtn.style.display = 'none';
+        }
+      }, 6000); // longer than the simulated 1.8s — a real radio scan needs a real window to catch advertisement packets
+    }
+
+    function renderFoundEarbudDevices(foundDevices) {
+      const slot = document.getElementById('earbud-device-slot');
+      slot.innerHTML = Array.from(foundDevices.values()).map(device => `
+        <div class="device-found-card" onclick="connectEarbudsNative('${device.deviceId}', ${JSON.stringify(device.name || 'Bluetooth device').replace(/"/g, '&quot;')})">
+          <svg class="icon" viewBox="0 0 24 24" style="width:20px;height:20px;color:var(--partner)"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg>
+          <div><div class="dev-name">${device.name}</div><div class="dev-sub">Tap to connect</div></div>
+        </div>`).join('');
+    }
+
+    async function connectEarbudsNative(deviceId, deviceName) {
+      const title = document.getElementById('earbud-status-title');
+      const sub = document.getElementById('earbud-status-sub');
+      title.textContent = 'Connecting…';
+      sub.textContent = deviceName;
+      try {
+        await window.Capacitor.Plugins.BluetoothLe.connect({ deviceId });
+        markEarbudsConnected(deviceName);
+      } catch (err) {
+        console.warn('BLE connect failed:', err);
+        title.textContent = 'Connection failed';
+        sub.textContent = String(err && err.message || err);
+      }
+    }
+
+    function markEarbudsConnected(deviceName) {
+      SetupState.earbudConnected = true;
+      const wrap = document.getElementById('earbud-visual');
+      wrap.classList.add('connected');
+      wrap.innerHTML = `<svg class="icon" viewBox="0 0 24 24" style="width:30px;height:30px;color:var(--success)"><path d="M20 6 9 17l-5-5"/></svg>`;
+      document.getElementById('earbud-status-title').textContent = 'Connected';
+      document.getElementById('earbud-status-sub').textContent = deviceName ? `Connected to ${deviceName}.` : 'You\'re all set.';
+      document.getElementById('earbud-device-slot').innerHTML = '';
+      const settingsVal = document.getElementById('settings-earbud-value');
+      if (settingsVal) { settingsVal.textContent = deviceName || 'Connected'; settingsVal.style.color = 'var(--success)'; }
+      document.getElementById('setup-skip').textContent = 'Continue';
+      document.getElementById('setup-skip').onclick = () => finishSetup(false);
+    }
+
+    // ---- Simulated fallback (plain web / browser) ----------------------
+    // Kept deliberately: Web Bluetooth doesn't exist at all in iOS
+    // Safari/WKWebView (so this path is what actually runs if someone
+    // opens the site in a plain browser rather than the installed native
+    // app), and real BLE pairing has no meaningful "browser demo" version
+    // worth building — this is honest placeholder UI for that case, not
+    // a claim that browser-based scanning works.
+    function startEarbudScanSimulated() {
+      const wrap = document.getElementById('earbud-visual');
+      const title = document.getElementById('earbud-status-title');
+      const sub = document.getElementById('earbud-status-sub');
+      const scanBtn = document.getElementById('setup-scan-btn');
+
+      wrap.classList.add('scanning');
+      title.textContent = 'Scanning…';
+      sub.textContent = 'Looking for nearby Bluetooth earbuds';
+      scanBtn.disabled = true;
+      scanBtn.textContent = 'Scanning…';
+
+      scanTimeoutHandle = setTimeout(() => {
+        wrap.classList.remove('scanning');
+        document.getElementById('earbud-device-slot').innerHTML = `
+          <div class="device-found-card" onclick="connectEarbuds()">
+            <svg class="icon" viewBox="0 0 24 24" style="width:20px;height:20px;color:var(--partner)"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg>
+            <div><div class="dev-name">Bluetooth Earbuds</div><div class="dev-sub">Tap to connect</div></div>
+          </div>`;
+        title.textContent = 'Device found';
+        sub.textContent = 'Tap it below to connect';
+        scanBtn.style.display = 'none';
+      }, 1800);
+    }
+
+    function connectEarbuds() {
+      markEarbudsConnected('Bluetooth Earbuds');
+    }
+
+    async function finishSetup(skippedEarbuds) {
+      if (scanTimeoutHandle) clearTimeout(scanTimeoutHandle);
+      try {
+        const res = await fetch('/api/auth/onboard', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({
+            display_name: SetupState.name || 'You',
+            preferred_language: SetupState.language || 'en',
+            tts_voice: SetupState.voice,
+          }),
+        });
+        const user = await res.json();
+        AuthState.user = user;
+        applyAuthUserToProfile();
+      } catch (err) {
+        console.warn('Could not save onboarding — continuing anyway.', err);
+      }
+      goTo('screen-home');
+      await Promise.all([refreshHistory(), refreshStats()]);
+    }
+
+    // =====================================================================
+    // Edit profile / Privacy / Notifications — real actions, not dead rows.
+    // =====================================================================
+    function openEditProfile() {
+      const name = AuthState.user?.display_name || '';
+      document.getElementById('edit-profile-name').value = name;
+      document.getElementById('edit-profile-identifier').textContent =
+        AuthState.user?.email || AuthState.user?.phone || '—';
+      document.getElementById('edit-profile-toast').textContent = '';
+      const avatar = document.getElementById('edit-profile-avatar');
+      if (avatar) avatar.textContent = (name.trim()[0] || '?').toUpperCase();
+      goTo('screen-edit-profile');
+    }
+
+    async function saveProfileEdit() {
+      const name = document.getElementById('edit-profile-name').value.trim();
+      const toast = document.getElementById('edit-profile-toast');
+      if (!name) { toast.style.color = 'var(--danger)'; toast.textContent = 'Name cannot be empty.'; return; }
+      try {
+        const res = await fetch('/api/auth/profile', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ display_name: name }),
+        });
+        const user = await res.json();
+        AuthState.user = user;
+        applyAuthUserToProfile();
+        toast.style.color = 'var(--success)';
+        toast.textContent = 'Saved.';
+      } catch (err) {
+        toast.style.color = 'var(--danger)';
+        toast.textContent = 'Could not save — check your connection.';
+      }
+    }
+
+    async function clearMyHistory() {
+      const toast = document.getElementById('privacy-toast');
+      if (!confirm('This permanently deletes your conversation history. Continue?')) return;
+      try {
+        await fetch('/api/history', { method: 'DELETE', headers: authHeaders() });
+        toast.style.color = 'var(--success)';
+        toast.textContent = 'Your conversation history has been cleared.';
+        await Promise.all([refreshStats(), refreshHistory()]);
+      } catch (err) {
+        toast.style.color = 'var(--danger)';
+        toast.textContent = 'Could not clear history — check your connection.';
+      }
+    }
+
+    function toggleNotifications(event) {
+      event.stopPropagation();
+      const panel = document.getElementById('notif-panel');
+      const isOpen = panel.classList.toggle('open');
+      if (isOpen) {
+        panel.innerHTML = `
+          <div class="notif-item"><div class="n-title">Welcome to VoxBuddy</div><div class="n-body">Tap "Start Conversation" any time to try the live demo.</div></div>
+          <div class="notif-item"><div class="n-title">Group conversations</div><div class="n-body">VoxBuddy can now follow two people talking to you at once.</div></div>
+        `;
+        document.getElementById('notif-dot').style.display = 'none';
+        document.addEventListener('click', closeNotificationsOnOutsideClick);
+      }
+    }
+    function closeNotificationsOnOutsideClick(e) {
+      const panel = document.getElementById('notif-panel');
+      if (!panel.contains(e.target)) {
+        panel.classList.remove('open');
+        document.removeEventListener('click', closeNotificationsOnOutsideClick);
+      }
+    }
+
+    function updateGreeting() {
+      const hour = new Date().getHours();
+      const timeLabel = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+      const nameEl = document.getElementById('home-greeting-name');
+      const timeEl = document.getElementById('home-greeting-time');
+      if (timeEl) timeEl.textContent = timeLabel;
+      if (nameEl) nameEl.textContent = AuthState.user?.display_name || 'there';
+    }
+
+    // =====================================================================
+    // Authentication — email or phone, OTP-based. Token persisted in
+    // localStorage so a reload doesn't force logging in again (this is a
+    // real standalone app served by our own FastAPI backend, not a
+    // claude.ai artifact — localStorage is the right tool here, unlike in
+    // that sandboxed context).
+    // =====================================================================
+    const AuthState = {
+      token: localStorage.getItem('voxbuddy_token'),
+      user: null,
+      channel: 'email',
+      pendingIdentifier: null,
+      resendAvailableAt: 0,
+    };
+
+    function authHeaders() {
+      return AuthState.token ? { 'Authorization': `Bearer ${AuthState.token}` } : {};
+    }
+
+    function showLoginStep(step) {
+      document.getElementById('login-step-identifier').classList.toggle('active', step === 'identifier');
+      document.getElementById('login-step-otp').classList.toggle('active', step === 'otp');
+      document.getElementById('login-error').textContent = '';
+    }
+
+    function backToIdentifierStep() {
+      showLoginStep('identifier');
+    }
+
+    let resendTimerHandle = null;
+    function startResendCooldown(seconds = 30) {
+      AuthState.resendAvailableAt = Date.now() + seconds * 1000;
+      const link = document.getElementById('resend-link');
+      const timer = document.getElementById('resend-timer');
+      link.style.display = 'none';
+      if (resendTimerHandle) clearInterval(resendTimerHandle);
+      resendTimerHandle = setInterval(() => {
+        const remaining = Math.ceil((AuthState.resendAvailableAt - Date.now()) / 1000);
+        if (remaining <= 0) {
+          clearInterval(resendTimerHandle);
+          timer.textContent = '';
+          link.style.display = 'inline';
+        } else {
+          timer.textContent = `Resend available in ${remaining}s`;
+        }
+      }, 500);
+    }
+
+    async function requestLoginCode() {
+      const identifier = document.getElementById('login-identifier').value.trim();
+      const errEl = document.getElementById('login-error');
+      errEl.textContent = '';
+      if (!identifier) { errEl.textContent = 'Enter your email first.'; return; }
+
+      const btn = document.getElementById('send-code-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/request-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier, channel: AuthState.channel }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errEl.textContent = data.detail || 'Could not send code.';
+          return;
+        }
+        AuthState.pendingIdentifier = identifier;
+        document.getElementById('otp-sent-to').textContent = identifier;
+        const otpInput = document.getElementById('login-otp');
+        otpInput.value = data.dev_otp || '';  // dev convenience only — populated
+                                               // solely when VOXBUDDY_AUTH_DEV_MODE=1
+        showLoginStep('otp');
+        startResendCooldown();
+      } catch (err) {
+        errEl.textContent = 'Could not reach the server. Is the backend running?';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ---- Google Sign-In (alongside email/phone OTP) ---------------------
+    // KNOWN LIMITATION, stated honestly rather than discovered the hard
+    // way later: Google's own policy blocks its OAuth/Identity Services
+    // flow inside most embedded WebViews (including Capacitor's native
+    // Android/iOS shell) as a security measure — you'll see an
+    // "disallowed_useragent" error there even though this works
+    // correctly in a real browser or installed PWA. There's no code fix
+    // for that from this side; the real fix for the native app
+    // specifically is a native Google Sign-In SDK plugin, which is a
+    // separate, not-yet-built piece of work.
+    async function initGoogleSignIn() {
+      try {
+        const res = await fetch('/api/auth/config');
+        const config = await res.json();
+        if (!config.google_client_id || !window.google || !window.google.accounts) return;
+
+        window.google.accounts.id.initialize({
+          client_id: config.google_client_id,
+          callback: handleGoogleCredentialResponse,
+        });
+        const container = document.getElementById('google-signin-container');
+        window.google.accounts.id.renderButton(container, {
+          theme: 'filled_black', size: 'large', shape: 'pill',
+          text: 'continue_with', width: 300,
+        });
+        document.getElementById('google-signin-block').style.display = 'block';
+      } catch (err) {
+        console.warn('Google Sign-In unavailable:', err);
+        // Fails silently into "just use email/phone" — a broken Google
+        // button would be worse than no button, and OTP login still
+        // works regardless of whether this succeeds.
+      }
+    }
+
+    async function handleGoogleCredentialResponse(response) {
+      const errEl = document.getElementById('login-error');
+      if (errEl) errEl.textContent = '';
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id_token: response.credential }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (errEl) errEl.textContent = data.detail || 'Google sign-in failed.';
+          return;
+        }
+        AuthState.token = data.token;
+        AuthState.user = data.user;
+        localStorage.setItem('voxbuddy_token', data.token);
+        applyAuthUserToProfile();
+        goTo(data.user.onboarded ? 'screen-home' : 'screen-setup');
+      } catch (err) {
+        if (errEl) errEl.textContent = 'Could not reach the server. Is the backend running?';
+      }
+    }
+
+    async function verifyLoginCode() {
+      const code = document.getElementById('login-otp').value.trim();
+      const errEl = document.getElementById('login-error');
+      errEl.textContent = '';
+      if (!code) { errEl.textContent = 'Enter the code you were sent.'; return; }
+
+      const btn = document.getElementById('verify-code-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: AuthState.pendingIdentifier, channel: AuthState.channel, code }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errEl.textContent = data.detail || 'Incorrect code.';
+          return;
+        }
+        AuthState.token = data.token;
+        AuthState.user = data.user;
+        localStorage.setItem('voxbuddy_token', data.token);
+        applyAuthUserToProfile();
+        // Route based on real onboarded status — previously always went
+        // to Setup, even for a returning user logging in again after a
+        // logout, which would have looped them through Setup a second
+        // time unnecessarily.
+        goTo(data.user.onboarded ? 'screen-home' : 'screen-setup');
+      } catch (err) {
+        errEl.textContent = 'Could not reach the server. Is the backend running?';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function applyAuthUserToProfile() {
+      if (!AuthState.user) return;
+      const identifier = AuthState.user.display_name || AuthState.user.email || AuthState.user.phone || 'You';
+      const initial = identifier.trim()[0]?.toUpperCase() || 'V';
+      const nameEl = document.querySelector('.profile-name');
+      const subEl = document.querySelector('.profile-sub');
+      const avatarEl = document.querySelector('.avatar-lg');
+      if (nameEl) nameEl.textContent = AuthState.user.display_name || identifier;
+      if (subEl) subEl.textContent = AuthState.user.email || AuthState.user.phone || '';
+      if (avatarEl) avatarEl.textContent = initial;
+
+      const langVal = document.getElementById('settings-lang-value');
+      const voiceVal = document.getElementById('settings-voice-value');
+      if (langVal) langVal.textContent = AuthState.user.preferred_language
+        ? languageInfo(AuthState.user.preferred_language).name : 'Not set';
+      if (voiceVal && AuthState.user.tts_voice) {
+        voiceVal.textContent = AuthState.user.tts_voice.charAt(0).toUpperCase() + AuthState.user.tts_voice.slice(1);
+      }
+
+      // Home screen's "You speak" pill — previously hardcoded to "EN" /
+      // "English" regardless of what the user actually picked in Setup or
+      // changed in Settings (caught by live browser testing, not just
+      // reading the code: setup correctly saved preferred_language to the
+      // backend, but nothing on Home ever read it back).
+      const homeLangVal = document.getElementById('home-lang-value');
+      const homeLangBadge = document.getElementById('home-lang-badge');
+      if (AuthState.user.preferred_language) {
+        const info = languageInfo(AuthState.user.preferred_language);
+        if (homeLangVal) homeLangVal.textContent = info.name;
+        if (homeLangBadge) {
+          homeLangBadge.textContent = AuthState.user.preferred_language.toUpperCase();
+          homeLangBadge.style.background = langColor(AuthState.user.preferred_language);
+        }
+      }
+      updateGreeting();
+    }
+
+    async function logout() {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() });
+      } catch (err) { /* logging out locally regardless of network state */ }
+      localStorage.removeItem('voxbuddy_token');
+      AuthState.token = null;
+      AuthState.user = null;
+      AppState.sessionId = null;
+      goTo('screen-login');
+    }
+
+    async function checkExistingLogin() {
+      if (!AuthState.token) { goTo('screen-login'); return; }
+      try {
+        const res = await fetch('/api/auth/me', { headers: authHeaders() });
+        if (res.ok) {
+          AuthState.user = await res.json();
+          applyAuthUserToProfile();
+          if (AuthState.user.onboarded) {
+            goTo('screen-home');
+            await Promise.all([refreshHistory(), refreshStats()]);
+          } else {
+            // Logged in before but never finished Setup (e.g. closed the
+            // app mid-flow) — send them back to finish it rather than
+            // dropping them on Home with no name/language ever collected.
+            goTo('screen-setup');
+          }
+          return;
+        }
+      } catch (err) { /* fall through to login below */ }
+      // Stored token is invalid/expired — clear it and start fresh.
+      localStorage.removeItem('voxbuddy_token');
+      AuthState.token = null;
+      goTo('screen-login');
+    }
+
+    const LANG_BADGE = { hi: 'lang-hi', fr: 'lang-fr', es: 'lang-es', de: 'lang-de', en: 'lang-hi' };
+
+    function formatRelativeTime(unixSeconds) {
+      const diffMs = Date.now() - unixSeconds * 1000;
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return 'Just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days === 1) return 'Yesterday';
+      if (days < 7) return `${days}d ago`;
+      return new Date(unixSeconds * 1000).toLocaleDateString();
+    }
+
+    function formatDuration(seconds) {
+      if (seconds < 60) return `${Math.round(seconds)}s`;
+      const m = Math.floor(seconds / 60);
+      const s = Math.round(seconds % 60);
+      return `${m}m ${s}s`;
+    }
+
+    function conversationCardHTML(conv) {
+      const badgeClass = LANG_BADGE[conv.target_lang] || 'lang-hi';
+      const badgeCode = (conv.target_lang || 'hi').toUpperCase();
+      const snippet = conv.first_line || '(no transcript)';
+      return `
+        <div class="convo-card" onclick="openDetail(${conv.id})">
+          <div class="convo-avatar ${badgeClass}">${badgeCode}</div>
+          <div class="convo-info">
+            <div class="convo-title">Conversation</div>
+            <div class="convo-sub">${snippet}</div>
+          </div>
+          <div class="convo-meta">
+            <div class="convo-time">${formatRelativeTime(conv.started_at)}</div>
+            <div class="convo-dur">${formatDuration(conv.duration_seconds)}</div>
+          </div>
+        </div>`;
+    }
+
+    async function refreshHistory() {
+      try {
+        const res = await fetch('/api/history', { headers: authHeaders() });
+        const conversations = await res.json();
+
+        const homeList = document.getElementById('home-recent-list');
+        const historyList = document.getElementById('history-list');
+
+        if (!conversations.length) {
+          const emptyMsg = '<div style="font-size:12.5px;color:var(--ink-faint);padding:8px 2px;">No conversations yet — tap "Start Conversation" above.</div>';
+          if (homeList) homeList.innerHTML = emptyMsg;
+          if (historyList) historyList.innerHTML = emptyMsg.replace('above', 'on Home');
+          return;
+        }
+
+        if (homeList) homeList.innerHTML = conversations.slice(0, 2).map(conversationCardHTML).join('');
+        if (historyList) historyList.innerHTML = conversations.map(conversationCardHTML).join('');
+      } catch (err) {
+        console.warn('Could not load history — backend unreachable.', err);
+      }
+    }
+
+    async function openDetail(conversationId) {
+      try {
+        const res = await fetch(`/api/history/${conversationId}`, { headers: authHeaders() });
+        const detail = await res.json();
+        if (detail.error) return;
+
+        document.getElementById('detail-sub').textContent =
+          `${new Date(detail.started_at * 1000).toLocaleString()} · ${formatDuration(detail.duration_seconds)}`;
+
+        const list = document.getElementById('transcript-list');
+        list.innerHTML = detail.turns.map(t => `
+          <div class="bubble ${t.role === 'self' ? 'self' : 'partner'}">
+            ${t.target_text}
+            ${t.role !== 'self' ? `<div class="orig">${t.source_lang} → translated live</div>` : ''}
+          </div>`).join('');
+
+        goTo('screen-detail');
+      } catch (err) {
+        console.warn('Could not load conversation detail.', err);
+      }
+    }
+
+    function formatTalkedTime(totalSeconds) {
+      if (totalSeconds < 60) return `${Math.round(totalSeconds)}s`;
+      const hours = Math.floor(totalSeconds / 3600);
+      const mins = Math.round((totalSeconds % 3600) / 60);
+      return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+    }
+
+    const BADGE_DEFS = [
+      { id: 'first-convo', emoji: '🎯', name: 'First Convo', threshold: 1, metric: 'conversations' },
+      { id: 'chatterbox', emoji: '💬', name: 'Chatterbox', threshold: 10, metric: 'conversations' },
+      { id: 'globe-trotter', emoji: '🌍', name: 'Globe Trotter', threshold: 3, metric: 'languages' },
+      { id: 'polyglot', emoji: '🗣️', name: 'Polyglot', threshold: 5, metric: 'languages' },
+    ];
+
+    function renderBadges(stats) {
+      const row = document.getElementById('badge-row');
+      if (!row) return;
+      const unlockedIds = [];
+      row.innerHTML = BADGE_DEFS.map(b => {
+        const value = b.metric === 'conversations' ? stats.total_conversations : stats.total_languages;
+        const unlocked = value >= b.threshold;
+        if (unlocked) unlockedIds.push(b.id);
+        const progress = unlocked ? 'Unlocked' : `${value}/${b.threshold}`;
+        return `
+          <div class="badge ${unlocked ? '' : 'locked'}" title="${unlocked ? 'Unlocked!' : `Reach ${b.threshold} ${b.metric} to unlock`}">
+            <div class="badge-emoji">${b.emoji}</div>
+            <div class="badge-name">${b.name}</div>
+            <div class="badge-progress">${progress}</div>
+          </div>`;
+      }).join('');
+
+      renderProfileFlair(unlockedIds);
+      announceNewlyUnlockedBadges(unlockedIds);
+    }
+
+    // ---- Badge payoff: flair strip + unlock celebration -----------------
+    // Previously, unlocking a badge changed its own tile from locked to
+    // unlocked and did nothing else — no visible payoff anywhere else in
+    // the app, no acknowledgment of the moment it happened. That's the
+    // "useless badges" gap flagged directly. Two real (if modest) fixes:
+    // unlocked badges now show as a small flair strip next to your name
+    // on Profile (a persistent, always-visible status), and unlocking a
+    // NEW one for the first time shows a one-time celebration toast.
+    function renderProfileFlair(unlockedIds) {
+      const flairEl = document.getElementById('profile-flair');
+      if (!flairEl) return;
+      if (!unlockedIds.length) { flairEl.innerHTML = ''; return; }
+      flairEl.innerHTML = unlockedIds.map(id => {
+        const b = BADGE_DEFS.find(x => x.id === id);
+        return b ? `<span class="flair-chip" title="${b.name}">${b.emoji}</span>` : '';
+      }).join('');
+    }
+
+    function seenBadgesKey() {
+      const uid = (AuthState.user && AuthState.user.id) || 'anon';
+      return `voxbuddy_seen_badges_${uid}`;
+    }
+
+    function announceNewlyUnlockedBadges(unlockedIds) {
+      let seen = [];
+      try { seen = JSON.parse(localStorage.getItem(seenBadgesKey()) || '[]'); } catch (e) { seen = []; }
+      const newlyUnlocked = unlockedIds.filter(id => !seen.includes(id));
+      if (newlyUnlocked.length) {
+        const b = BADGE_DEFS.find(x => x.id === newlyUnlocked[0]);
+        if (b) showBadgeToast(b);
+      }
+      try { localStorage.setItem(seenBadgesKey(), JSON.stringify(unlockedIds)); } catch (e) { /* storage unavailable — non-critical */ }
+    }
+
+    function showBadgeToast(badge) {
+      const toast = document.createElement('div');
+      toast.className = 'badge-toast';
+      toast.innerHTML = `<span class="badge-toast-emoji">${badge.emoji}</span>
+        <div><div class="badge-toast-title">Badge unlocked!</div>
+        <div class="badge-toast-name">${badge.name}</div></div>`;
+      document.body.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add('show'));
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+      }, 3200);
+    }
+
+    async function refreshStats() {
+      try {
+        const res = await fetch('/api/stats', { headers: authHeaders() });
+        const stats = await res.json();
+        const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        setText('stat-conversations', stats.total_conversations);
+        setText('stat-languages', stats.total_languages);
+        setText('stat-talked', formatTalkedTime(stats.total_seconds));
+        setText('profile-stat-convos', stats.total_conversations);
+        setText('profile-stat-langs', stats.total_languages);
+        setText('profile-stat-streak', stats.day_streak);
+        renderBadges(stats);
+      } catch (err) {
+        console.warn('Could not load stats — backend unreachable.', err);
+      }
+    }
+
+    async function refreshLanguageBreakdown() {
+      const card = document.getElementById('lang-breakdown-card');
+      if (!card) return;
+      try {
+        const res = await fetch('/api/stats/languages', { headers: authHeaders() });
+        const breakdown = await res.json();
+        if (!breakdown.length) {
+          card.innerHTML = `<div class="lang-proficiency-row" style="border:none; color:var(--ink-faint); font-size:12.5px;">No conversations yet</div>`;
+          return;
+        }
+        const maxCount = Math.max(...breakdown.map(b => b.count));
+        card.innerHTML = breakdown.map(b => {
+          const info = languageInfo(b.lang);
+          const pct = Math.round((b.count / maxCount) * 100);
+          return `
+            <div class="lang-proficiency-row">
+              <div class="lp-left">
+                <div class="lang-badge" style="width:22px;height:22px;font-size:8.5px;border-radius:6px;background:${langColor(b.lang)}">${b.lang.toUpperCase()}</div>
+                ${info.name}
+              </div>
+              <div class="lp-bar-track"><div class="lp-bar-fill" style="width:${pct}%"></div></div>
+            </div>`;
+        }).join('');
+      } catch (err) {
+        console.warn('Could not load language breakdown.', err);
+      }
+    }
+
+    async function ensureSession() {
+      if (AppState.sessionId) return AppState.sessionId;
+      try {
+        const res = await fetch('/api/session', { method: 'POST' });
+        const data = await res.json();
+        AppState.sessionId = data.session_id;
+        await fetch(`/api/session/${AppState.sessionId}/enroll_self`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ speaker_label: 'app_user_self' }),
+        });
+      } catch (err) {
+        console.warn('Backend not reachable — continuing in UI-only mode.', err);
+      }
+      return AppState.sessionId;
+    }
+
+    // A short scripted exchange (same shopkeeper scenario used elsewhere in
+    // this project) that plays out over the REAL WebSocket + CIE once a
+    // conversation starts, so the calm empty-orb screen is backed by an
+    // actual pipeline run, not just a static animation.
+    const DEMO_EXCHANGE = [
+      { speaker_label: 'shopkeeper', text: 'namaste, kitne ka hai yeh?', turn_taking_score: 0.9, semantic_coherence_score: 0.9, delay: 900 },
+      { speaker_label: 'shopkeeper', text: 'aap kahan se ho?', turn_taking_score: 0.85, semantic_coherence_score: 0.85, delay: 3200 },
+      { speaker_label: 'shopkeeper', text: 'accha, bahut accha!', turn_taking_score: 0.85, semantic_coherence_score: 0.8, delay: 3200 },
+    ];
+
+    // ---- Real TTS playback --------------------------------------------
+    // session/manager.py's _translate_and_record now attaches the TTS
+    // agent's output to every pipeline result instead of discarding it.
+    // With the default mock TTS provider that's just the translated text
+    // UTF-8-encoded (tts_audio_format: "mock-text") — not audio, so this
+    // deliberately skips playback rather than trying to play garbage
+    // through an <audio> element. Set VOXBUDDY_TTS_PROVIDER=elevenlabs (+
+    // ELEVENLABS_API_KEY, + real voice IDs — see tts_elevenlabs.py's
+    // DEFAULT_VOICE_IDS placeholders) on the backend to get real mp3 back
+    // and hear it played here.
+    function playTtsAudioIfReal(result) {
+      if (!result.tts_audio_b64) {
+        if (result.tts_error) console.warn('TTS error:', result.tts_error);
+        return;
+      }
+      if (result.tts_audio_format !== 'mp3') {
+        return; // mock-text placeholder — nothing real to play
+      }
+      const audio = new Audio(`data:audio/mpeg;base64,${result.tts_audio_b64}`);
+      audio.play().catch(err => console.warn('Playback failed:', err));
+    }
+
+    async function startConversation() {
+      goTo('screen-convo');
+      document.querySelector('#screen-convo .partner-lang').textContent = 'Listening…';
+      document.querySelector('.orb.partner').classList.add('pending');
+      renderWaveform('convo-waveform', 24);
+
+      const sessionId = await ensureSession();
+      if (!sessionId) return; // UI-only fallback if backend truly unreachable
+
+      AppState.intentionalClose = false;
+      AppState.reconnectAttempts = 0;
+
+      const useRealMic = document.getElementById('use-real-mic-toggle').checked;
+      if (useRealMic) {
+        document.getElementById('convo-waveform').classList.add('live-driven');
+        await startMicCapture(sessionId);
+        return;
+      }
+
+      connectConversationSocket(sessionId);
+
+      for (const step of DEMO_EXCHANGE) {
+        await new Promise(r => setTimeout(r, step.delay));
+        if (!AppState.ws || AppState.ws.readyState !== WebSocket.OPEN) break;
+        AppState.ws.send(JSON.stringify({
+          speaker_label: step.speaker_label, text: step.text, target_lang: 'en',
+          turn_taking_score: step.turn_taking_score, semantic_coherence_score: step.semantic_coherence_score,
+        }));
+      }
+    }
+
+    // ---- Real microphone capture -------------------------------------
+    // getUserMedia -> AudioContext ScriptProcessorNode (widest browser
+    // support without pulling in an AudioWorklet module file) -> downsample
+    // from whatever the mic's native rate is (usually 44.1/48kHz) to the
+    // 16kHz mono PCM16 the backend/agents/asr_assemblyai.py adapter and
+    // MockStreamingASRAgent both expect -> streamed as binary frames over
+    // /ws/{session_id}/audio (see app.py's websocket_audio_session).
+    //
+    // This captures and transports real audio end to end. Whether it gets
+    // transcribed into real text depends entirely on the backend's
+    // VOXBUDDY_ASR_PROVIDER: "mock" (default) proves the pipe works but
+    // can't read real speech; "assemblyai" (+ ASSEMBLYAI_API_KEY) does.
+    async function startMicCapture(sessionId) {
+      const statusLine = document.getElementById('convo-status-line');
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        statusLine.textContent = 'Microphone permission denied.';
+        console.warn('getUserMedia failed', err);
+        return;
+      }
+
+      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${protocol}://${location.host}/ws/${sessionId}/audio`);
+      ws.binaryType = 'arraybuffer';
+      AppState.micWs = ws;
+      // Fresh adaptive noise-gate state per call — see makeNoiseGateState()
+      // and shouldForwardFrame() below for what this actually does.
+      AppState.noiseGate = makeNoiseGateState();
+      AppState.micStream = stream;
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      AppState.micAudioCtx = audioCtx;
+      const sourceNode = audioCtx.createMediaStreamSource(stream);
+      const TARGET_SAMPLE_RATE = 16000;
+      const BUFFER_SIZE = 4096;
+      // ScriptProcessorNode is deprecated in favor of AudioWorklet, but
+      // needs no separate module file to load and still works in every
+      // major browser today — the right tradeoff for a first real-audio
+      // pass. Swap for an AudioWorkletNode if/when that matters.
+      const processor = audioCtx.createScriptProcessor(BUFFER_SIZE, 1, 1);
+      AppState.micProcessor = processor;
+
+      processor.onaudioprocess = (event) => {
+        const input = event.inputBuffer.getChannelData(0);
+        updateConvoWaveformLive(frameRMS(input)); // visualize every frame, even gated-out ones — you should see the meter respond the instant you make sound, not only once it clears the noise gate
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (!shouldForwardFrame(input, AppState.noiseGate)) return;
+        const downsampled = downsampleBuffer(input, audioCtx.sampleRate, TARGET_SAMPLE_RATE);
+        const pcm16 = floatTo16BitPCM(downsampled);
+        ws.send(pcm16);
+      };
+
+      sourceNode.connect(processor);
+      // ScriptProcessorNode only fires onaudioprocess while connected into
+      // the graph's destination, even though we don't want to play the
+      // audio back — a silent/no-op requirement of the (deprecated) API.
+      processor.connect(audioCtx.destination);
+
+      ws.onopen = () => {
+        statusLine.textContent = 'Listening (real microphone)…';
+      };
+      ws.onmessage = (event) => {
+        const result = JSON.parse(event.data);
+        if (result.error) {
+          statusLine.textContent = result.error;
+          console.warn('Audio pipeline error:', result.error);
+          return;
+        }
+        if (result.role === 'partner') {
+          document.querySelector('#screen-convo .partner-lang').textContent = 'Detected speaker';
+          document.querySelector('.orb.partner').classList.remove('pending');
+          AppState.turnsThisSession++;
+        }
+        playTtsAudioIfReal(result);
+        statusLine.textContent = result.translated_text
+          ? `Translated: "${result.translated_text}"`
+          : 'Listening (real microphone)…';
+      };
+      ws.onclose = () => {
+        if (!AppState.intentionalClose) {
+          statusLine.textContent = 'Microphone connection closed.';
+        }
+      };
+    }
+
+    function stopMicCapture() {
+      if (AppState.micProcessor) { AppState.micProcessor.disconnect(); AppState.micProcessor = null; }
+      if (AppState.micAudioCtx) { AppState.micAudioCtx.close(); AppState.micAudioCtx = null; }
+      if (AppState.micStream) { AppState.micStream.getTracks().forEach(t => t.stop()); AppState.micStream = null; }
+      if (AppState.micWs) { AppState.micWs.close(); AppState.micWs = null; }
+    }
+
+    // ---- Background noise filtering (adaptive energy-based gate) ------
+    // Real signal processing, not a cosmetic toggle — but scoped
+    // honestly: this is a voice-activity gate (stops sending audio
+    // frames that are just ambient room noise), not full noise
+    // *removal* from within a frame (spectral subtraction / RNNoise-style
+    // denoising is a genuinely different, much bigger project — this is
+    // the "don't waste ASR time/cost on silence and background hum"
+    // layer, which is also most of what "noise filtering" means for a
+    // conversation app in practice: cutting dead air between turns).
+    //
+    // How it works: tracks a running estimate of the "noise floor" (the
+    // ambient energy level when nobody's talking) using an exponential
+    // moving average that only updates during quiet frames, so it slowly
+    // adapts to the actual room instead of using one fixed threshold.
+    // A frame is forwarded as speech if its energy clears the floor by a
+    // margin. A short "hangover" window keeps forwarding for a few frames
+    // after energy drops, so trailing consonants at the end of a word
+    // don't get chopped off — a standard VAD technique, not a novel one.
+    //
+    // Fully unit-testable without a microphone (pure math on Float32Array
+    // input) — verified against synthetic tone/silence buffers in Node,
+    // not just "should work in theory."
+    function makeNoiseGateState() {
+      return {
+        noiseFloor: 0.002,   // starting estimate, adapts quickly in practice
+        hangoverFrames: 0,
+        FLOOR_ADAPT_RATE: 0.05,
+        SPEECH_MARGIN: 2.5,   // frame must exceed floor * this to count as speech
+        HANGOVER_FRAME_COUNT: 6, // trailing hold, in audio buffers
+      };
+    }
+
+    function frameRMS(floatSamples) {
+      let sumSquares = 0;
+      for (let i = 0; i < floatSamples.length; i++) {
+        sumSquares += floatSamples[i] * floatSamples[i];
+      }
+      return Math.sqrt(sumSquares / floatSamples.length);
+    }
+
+    function shouldForwardFrame(floatSamples, gate) {
+      if (!gate) return true; // gate disabled/not initialized -> fail open, never silently drop real audio
+      const energy = frameRMS(floatSamples);
+      const isSpeech = energy > gate.noiseFloor * gate.SPEECH_MARGIN;
+
+      if (isSpeech) {
+        gate.hangoverFrames = gate.HANGOVER_FRAME_COUNT;
+        return true;
+      }
+
+      // Only adapt the floor during confirmed-quiet frames — adapting
+      // during speech would let loud talking slowly raise the floor
+      // until the gate started eating your own voice.
+      gate.noiseFloor = (1 - gate.FLOOR_ADAPT_RATE) * gate.noiseFloor
+                       + gate.FLOOR_ADAPT_RATE * energy;
+
+      if (gate.hangoverFrames > 0) {
+        gate.hangoverFrames--;
+        return true; // still in the trailing hold window
+      }
+      return false;
+    }
+
+    function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
+      if (outputSampleRate === inputSampleRate) return buffer;
+      const ratio = inputSampleRate / outputSampleRate;
+      const newLength = Math.round(buffer.length / ratio);
+      const result = new Float32Array(newLength);
+      let offsetResult = 0;
+      let offsetBuffer = 0;
+      while (offsetResult < newLength) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+          accum += buffer[i];
+          count++;
+        }
+        result[offsetResult] = count ? accum / count : 0;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+      }
+      return result;
+    }
+
+    function floatTo16BitPCM(floatBuffer) {
+      const pcm16 = new Int16Array(floatBuffer.length);
+      for (let i = 0; i < floatBuffer.length; i++) {
+        const clamped = Math.max(-1, Math.min(1, floatBuffer[i]));
+        pcm16[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+      }
+      return pcm16.buffer;
+    }
+
+    // Reconnection with exponential backoff on an UNEXPECTED drop (network
+    // hiccup, backend restart) — not on the deliberate close from
+    // endConversation(), which sets intentionalClose first specifically to
+    // skip this. Reconnecting to the same session_id naturally resumes the
+    // same in-memory SessionManager server-side (see app.py's
+    // websocket_session: it only creates a fresh one if the session_id
+    // isn't already tracked), so CIE state — the established partner,
+    // speaker history — survives the reconnect rather than starting over.
+    // This is the web-app equivalent of PRD §6.5's "never a user-facing
+    // error dead-end" principle for the earbud-disconnect case.
+    const MAX_RECONNECT_ATTEMPTS = 5;
+
+    function connectConversationSocket(sessionId) {
+      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${protocol}://${location.host}/ws/${sessionId}`);
+      AppState.ws = ws;
+
+      ws.onopen = () => {
+        AppState.reconnectAttempts = 0;
+      };
+
+      ws.onmessage = (event) => {
+        const result = JSON.parse(event.data);
+        if (result.role === 'partner') {
+          document.querySelector('#screen-convo .partner-lang').textContent = 'Hindi speaker';
+          document.querySelector('.orb.partner').classList.remove('pending');
+          AppState.turnsThisSession++;
+        }
+        playTtsAudioIfReal(result);
+      };
+
+      ws.onclose = () => {
+        if (AppState.intentionalClose) return;
+
+        if (AppState.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+          document.querySelector('#screen-convo .partner-lang').textContent = 'Connection lost';
+          return;
+        }
+
+        AppState.reconnectAttempts++;
+        const label = document.querySelector('#screen-convo .partner-lang');
+        const previousText = label.textContent;
+        label.textContent = 'Reconnecting…';
+
+        const delay = Math.min(1000 * 2 ** AppState.reconnectAttempts, 8000);
+        setTimeout(() => {
+          // Only reconnect if we're still actually in the conversation
+          // screen — the user may have already backed out to Home.
+          if (document.getElementById('screen-convo').classList.contains('active')) {
+            connectConversationSocket(sessionId);
+          }
+        }, delay);
+      };
+    }
+
+    async function endConversation() {
+      AppState.intentionalClose = true;
+      if (AppState.ws) { AppState.ws.close(); AppState.ws = null; }
+      stopMicCapture();
+
+      if (AppState.sessionId && AppState.turnsThisSession > 0) {
+        try {
+          const res = await fetch(`/api/session/${AppState.sessionId}/end`, { method: 'POST', headers: authHeaders() });
+          const result = await res.json();
+          if (result.saved) {
+            await Promise.all([refreshHistory(), refreshStats()]);
+          }
+        } catch (err) {
+          console.warn('Could not persist conversation.', err);
+        }
+      }
+
+      // The session was deleted server-side by /end (or never had any
+      // turns) — reset so the NEXT conversation creates and enrolls a
+      // fresh one, rather than silently reusing a session_id the server
+      // no longer has any record of.
+      AppState.sessionId = null;
+      AppState.turnsThisSession = 0;
+
+      document.querySelector('.orb.partner').classList.add('pending');
+      goTo('screen-home');
+    }
+
+    // NOTE: no generic '.setup-cta' listener here anymore — the old Setup
+    // flow was a single button, so a single querySelector('.setup-cta')
+    // listener made sense. The real multi-step wizard now has explicit
+    // onclick handlers per step (setupGoToStep, finishSetup); a leftover
+    // generic listener here would grab whichever element the class
+    // happens to match first and fire alongside the real per-step logic —
+    // exactly the bug that caused Step 1's "Continue" to jump straight to
+    // Home instead of advancing to Step 2, caught via live testing.
+    document.querySelector('.start-btn').addEventListener('click', (e) => { e.preventDefault(); startConversation(); });
+    document.querySelector('.end-call-btn').addEventListener('click', (e) => { e.preventDefault(); endConversation(); });
+
+    checkExistingLogin();
+    initGoogleSignIn();
+    renderWaveform('login-waveform', 22);
+    renderWaveform('home-waveform', 26);
+
+    // ---- Offline mode v1: graceful degradation, not full offline use --
+    // Scoped honestly: this does NOT let you have a conversation offline
+    // (that needs on-device ASR/translation models — a genuinely
+    // different, much bigger project). What it does do, for real: the
+    // service worker (sw.js) already caches the app shell so the UI
+    // still loads with no connection instead of a browser error page,
+    // and this adds the missing piece — the user actually being told
+    // they're offline, instead of buttons silently doing nothing while
+    // fetch() calls fail invisibly in the console.
+    function updateOnlineStatus() {
+      const banner = document.getElementById('offline-banner');
+      if (!banner) return;
+      banner.classList.toggle('show', !navigator.onLine);
+    }
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus(); // reflect actual state immediately on load, don't wait for an event
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch((err) => {
+          console.warn('VoxBuddy: service worker registration failed', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

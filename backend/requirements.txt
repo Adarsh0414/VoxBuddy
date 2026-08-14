@@ -1,0 +1,28 @@
+# Web server (serves API, WebSocket, and the frontend static files)
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+
+# Testing
+pytest==8.3.3
+httpx==0.28.1
+
+# Real vendor adapters (see docs/vendor_decision.md).
+# 'anthropic' and 'google-genai' are alternative translation providers —
+# pick one via VOXBUDDY_TRANSLATION_PROVIDER, you don't need both installed
+# in production, but both are listed here so either works out of the box.
+# httpx is also used directly by otp_providers.py's real Brevo email/SMS
+# adapters (VOXBUDDY_OTP_PROVIDER=brevo) — otherwise only needed for tests.
+# assemblyai/elevenlabs are needed only once agents/asr_assemblyai.py and
+# agents/tts_elevenlabs.py are wired into session/manager.py (Phase 2+,
+# see the module docstrings in those files for what that work involves).
+python-dotenv==1.0.1
+anthropic==0.120.0
+google-genai==1.31.0
+google-auth==2.35.0
+assemblyai==0.64.32
+elevenlabs==2.59.0
+
+# Optional: only needed if VOXBUDDY_SESSION_STORE=redis (see token_store.py).
+# The app runs fine without Redis installed at all — sqlite is the default.
+redis==5.2.1
