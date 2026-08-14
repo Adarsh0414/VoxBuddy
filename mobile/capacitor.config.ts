@@ -15,7 +15,7 @@ const config: CapacitorConfig = {
   appName: 'VoxBuddy',
   webDir: 'www',
   server: {
-    url: 'https://REPLACE-WITH-YOUR-DEPLOYED-BACKEND-URL.onrender.com',
+    url: 'https://voxbuddy-backend.onrender.com',
     cleartext: false,
   },
   android: {
