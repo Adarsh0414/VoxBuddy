@@ -16,7 +16,7 @@ services:
       # To use Gemini instead of Claude, change value below to "gemini"
       # and set GEMINI_API_KEY in the dashboard instead of ANTHROPIC_API_KEY.
       - key: VOXBUDDY_TRANSLATION_PROVIDER
-        value: anthropic
+        value: gemini
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: GEMINI_API_KEY
@@ -39,7 +39,9 @@ services:
         sync: false
       - key: VOXBUDDY_OTP_SMS_PROVIDER
         sync: false
-      - key: BREVO_API_KEY
+      - key: VOXBUDDY_BREVO_API_KEY
+        sync: false
+      - key: VOXBUDDY_BREVO_SENDER_EMAIL
         sync: false
       - key: VOXBUDDY_SMTP_USERNAME
         sync: false
