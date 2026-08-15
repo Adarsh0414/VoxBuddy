@@ -307,6 +307,15 @@
     background: linear-gradient(135deg, var(--self), var(--partner));
     display: flex; align-items: center; justify-content: center;
     font-family: 'Fraunces', serif; font-size: 30px; font-weight: 600; color: #0B0D14;
+    overflow: hidden;
+  }
+  /* Default profile picture — a silhouette icon centered on the existing
+     gradient circle (not a full-bleed photo), same look as Gmail/Slack's
+     default avatar. Inverted to white via filter since the source SVG is
+     solid black, so it reads clearly against the gold/teal gradient. */
+  .avatar-lg img.avatar-icon {
+    width: 62%; height: 62%; object-fit: contain;
+    filter: brightness(0) invert(1); opacity: 0.92;
   }
   .profile-name { font-family: 'Fraunces', serif; font-size: 20px; margin-top: 12px; }
   .profile-sub { font-size: 12.5px; color: var(--ink-muted); margin-top: 3px; }
@@ -847,7 +856,15 @@
         </div>
 
         <svg class="login-constellation" viewBox="0 0 390 500" preserveAspectRatio="xMidYMid slice">
-          <g class="const-lines">
+          <!-- fill/stroke presentation attributes below are a hard fallback
+               (plain hex, no var()/color-mix()) for WebViews that fail to
+               resolve the CSS custom properties on SVG elements — without
+               this, an unresolved var() falls back to SVG's own default
+               fill of solid black instead of the intended teal/gold, which
+               is exactly what showed up as a "black spot" on-device. The
+               .const-lines/.const-dots CSS rules still apply and win
+               wherever the browser does support them. -->
+          <g class="const-lines" stroke="#4FD1C5">
             <line x1="60" y1="90" x2="140" y2="60" />
             <line x1="140" y1="60" x2="230" y2="100" />
             <line x1="230" y1="100" x2="330" y2="70" />
@@ -863,17 +880,17 @@
             <line x1="180" y1="380" x2="320" y2="320" />
           </g>
           <g class="const-dots">
-            <circle cx="60" cy="90" r="3" />
-            <circle cx="140" cy="60" r="2.4" />
-            <circle cx="230" cy="100" r="3.4" />
-            <circle cx="330" cy="70" r="2.4" />
-            <circle cx="40" cy="180" r="2.8" />
-            <circle cx="350" cy="170" r="3" />
-            <circle cx="120" cy="230" r="2.6" />
-            <circle cx="270" cy="220" r="3.2" />
-            <circle cx="60" cy="330" r="2.4" />
-            <circle cx="320" cy="320" r="2.8" />
-            <circle cx="180" cy="380" r="3.4" />
+            <circle cx="60" cy="90" r="3" fill="#E8A94C" />
+            <circle cx="140" cy="60" r="2.4" fill="#4FD1C5" />
+            <circle cx="230" cy="100" r="3.4" fill="#E8A94C" />
+            <circle cx="330" cy="70" r="2.4" fill="#4FD1C5" />
+            <circle cx="40" cy="180" r="2.8" fill="#E8A94C" />
+            <circle cx="350" cy="170" r="3" fill="#4FD1C5" />
+            <circle cx="120" cy="230" r="2.6" fill="#E8A94C" />
+            <circle cx="270" cy="220" r="3.2" fill="#4FD1C5" />
+            <circle cx="60" cy="330" r="2.4" fill="#E8A94C" />
+            <circle cx="320" cy="320" r="2.8" fill="#4FD1C5" />
+            <circle cx="180" cy="380" r="3.4" fill="#E8A94C" />
           </g>
         </svg>
 
@@ -954,12 +971,11 @@
           <div class="wizard-title">What should we call you?</div>
           <div class="wizard-sub">This is how you'll show up in your own profile — nobody else sees it during a conversation.</div>
           <div style="display:flex; justify-content:center; margin:20px 0 4px;">
-            <div class="avatar-lg" id="setup-name-avatar" style="width:56px;height:56px;font-size:22px;opacity:0.5;">?</div>
+            <div class="avatar-lg" id="setup-name-avatar" style="width:56px;height:56px;"><img class="avatar-icon" src="/static/icons/avatar-default.svg" alt=""></div>
           </div>
           <div class="sub-field">
             <label>Your name</label>
-            <input type="text" id="setup-name" placeholder="e.g. Adarsh" autocomplete="name"
-              oninput="const a=document.getElementById('setup-name-avatar'); a.textContent=(this.value.trim()[0]||'?').toUpperCase(); a.style.opacity=this.value.trim()?1:0.5;" />
+            <input type="text" id="setup-name" placeholder="e.g. Adarsh" autocomplete="name" />
           </div>
           <button class="setup-cta" id="setup-next-1" disabled onclick="setupGoToStep(2)">Continue</button>
         </div>
@@ -1037,11 +1053,11 @@
           <div><div class="detail-title">Edit profile</div></div>
         </div>
         <div style="display:flex; justify-content:center; margin-top:8px;">
-          <div class="avatar-lg" id="edit-profile-avatar" style="width:64px;height:64px;font-size:24px;">A</div>
+          <div class="avatar-lg" id="edit-profile-avatar" style="width:64px;height:64px;"><img class="avatar-icon" src="/static/icons/avatar-default.svg" alt=""></div>
         </div>
         <div class="sub-field">
           <label>Name</label>
-          <input type="text" id="edit-profile-name" oninput="document.getElementById('edit-profile-avatar').textContent = (this.value.trim()[0] || '?').toUpperCase()" />
+          <input type="text" id="edit-profile-name" />
         </div>
         <div class="sub-field">
           <label>Signed in with</label>
@@ -1240,7 +1256,7 @@
         </div>
 
         <div class="profile-header">
-          <div class="avatar-lg">A</div>
+          <div class="avatar-lg"><img class="avatar-icon" src="/static/icons/avatar-default.svg" alt=""></div>
           <div class="profile-name">Adarsh</div>
           <div class="profile-flair" id="profile-flair"></div>
           <div class="profile-sub">VIT Bhopal · Member since 2026</div>
@@ -1404,9 +1420,21 @@
       bars[bars.length - 1].style.height = heightPx + 'px';
     }
 
-    function goTo(id) {
+    // ---- Screen navigation stack, for the hardware/gesture back button ---
+    // goTo() only ever toggled CSS classes with no browser history entry,
+    // so Android's back gesture had nothing to "go back" through and
+    // defaulted to closing the app. This stack is what the backButton
+    // listener below walks instead.
+    const screenStack = ['screen-login'];
+
+    function goTo(id, opts) {
+      const fromBack = opts && opts.fromBack;
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
       document.getElementById(id).classList.add('active');
+
+      if (!fromBack && screenStack[screenStack.length - 1] !== id) {
+        screenStack.push(id);
+      }
 
       const tabbar = document.getElementById('tabbar');
       tabbar.style.display = NO_TABBAR_SCREENS.includes(id) ? 'none' : 'flex';
@@ -1421,6 +1449,53 @@
 
       if (id === 'screen-history' && typeof refreshHistory === 'function') refreshHistory();
       if (id === 'screen-profile' && typeof refreshStats === 'function') { refreshStats(); refreshLanguageBreakdown(); }
+    }
+
+    // ---- Hardware/gesture back button (native only) -----------------------
+    // Pops the stack and re-shows the previous screen. On screen-home with
+    // nothing left to pop, a second back press within 2s exits the app —
+    // same "press back again to exit" pattern most Android apps use,
+    // rather than exiting on the very first press.
+    let lastBackPressAt = 0;
+    if (isNativePlatform() && window.Capacitor.Plugins.App) {
+      window.Capacitor.Plugins.App.addListener('backButton', () => {
+        // Close an open modal/detail pane first if one is on top of the
+        // stack, same as tapping its own back arrow would.
+        if (screenStack.length > 1) {
+          screenStack.pop();
+          const prev = screenStack[screenStack.length - 1];
+          goTo(prev, { fromBack: true });
+          return;
+        }
+        if (screenStack[0] !== 'screen-home' && document.getElementById('screen-home')) {
+          screenStack[0] = 'screen-home';
+          goTo('screen-home', { fromBack: true });
+          return;
+        }
+        const now = Date.now();
+        if (now - lastBackPressAt < 2000) {
+          window.Capacitor.Plugins.App.exitApp();
+        } else {
+          lastBackPressAt = now;
+          showExitHintToast();
+        }
+      });
+    }
+
+    function showExitHintToast() {
+      let el = document.getElementById('exit-hint-toast');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'exit-hint-toast';
+        el.textContent = 'Press back again to exit';
+        el.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);'
+          + 'background:rgba(20,22,30,0.92);color:#fff;padding:9px 16px;border-radius:20px;'
+          + 'font-size:13px;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.2s;';
+        document.body.appendChild(el);
+      }
+      el.style.opacity = '1';
+      clearTimeout(showExitHintToast._t);
+      showExitHintToast._t = setTimeout(() => { el.style.opacity = '0'; }, 1800);
     }
 
     const DEV_MODE = new URLSearchParams(location.search).has('dev')
@@ -1623,7 +1698,13 @@
       let listenerHandle = null;
 
       try {
-        await Ble.initialize();
+        // androidNeverForLocation must match the manifest's BLUETOOTH_SCAN
+        // usesPermissionFlags="neverForLocation" — without this the plugin
+        // assumes it might need location data from scan results and goes
+        // looking for ACCESS_FINE_LOCATION, which the manifest deliberately
+        // caps at maxSdkVersion=30 (excluded on Android 12+), causing a
+        // false "missing permission" error on any modern device.
+        await Ble.initialize({ androidNeverForLocation: true });
         listenerHandle = await Ble.addListener('onScanResult', (result) => {
           const device = result && result.device;
           if (!device || !device.deviceId || foundDevices.has(device.deviceId)) return;
@@ -1767,8 +1848,6 @@
       document.getElementById('edit-profile-identifier').textContent =
         AuthState.user?.email || AuthState.user?.phone || '—';
       document.getElementById('edit-profile-toast').textContent = '';
-      const avatar = document.getElementById('edit-profile-avatar');
-      if (avatar) avatar.textContent = (name.trim()[0] || '?').toUpperCase();
       goTo('screen-edit-profile');
     }
 
@@ -2013,13 +2092,10 @@
     function applyAuthUserToProfile() {
       if (!AuthState.user) return;
       const identifier = AuthState.user.display_name || AuthState.user.email || AuthState.user.phone || 'You';
-      const initial = identifier.trim()[0]?.toUpperCase() || 'V';
       const nameEl = document.querySelector('.profile-name');
       const subEl = document.querySelector('.profile-sub');
-      const avatarEl = document.querySelector('.avatar-lg');
       if (nameEl) nameEl.textContent = AuthState.user.display_name || identifier;
       if (subEl) subEl.textContent = AuthState.user.email || AuthState.user.phone || '';
-      if (avatarEl) avatarEl.textContent = initial;
 
       const langVal = document.getElementById('settings-lang-value');
       const voiceVal = document.getElementById('settings-voice-value');

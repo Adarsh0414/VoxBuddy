@@ -15,7 +15,9 @@ const config: CapacitorConfig = {
   appName: 'VoxBuddy',
   webDir: 'www',
   server: {
-    url: 'https://voxbuddy-backend.onrender.com',
+    // "/app" — the bare domain root serves a separate internal CIE debug
+    // page (frontend/index.html), not the real app UI (app-preview.html).
+    url: 'https://voxbuddy-backend.onrender.com/app',
     cleartext: false,
   },
   android: {

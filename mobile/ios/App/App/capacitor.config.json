@@ -2,5 +2,14 @@
 	"appId": "com.voxbuddy.app",
 	"appName": "VoxBuddy",
 	"webDir": "www",
-	"packageClassList": []
+	"server": {
+		"url": "https://voxbuddy-backend.onrender.com/app",
+		"cleartext": false
+	},
+	"android": {
+		"allowMixedContent": false
+	},
+	"packageClassList": [
+		"BluetoothLe"
+	]
 }
