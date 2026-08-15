@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+import secrets
 import uuid
 from pathlib import Path
+from urllib.parse import quote, urlencode
 
 try:
     from dotenv import load_dotenv
@@ -29,7 +31,7 @@ except ImportError:
     pass  # python-dotenv is optional — env vars can be exported directly instead
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -213,12 +215,30 @@ def auth_config():
     return {"google_client_id": os.environ.get("GOOGLE_CLIENT_ID", "")}
 
 
+def _session_from_google_payload(payload: dict) -> "VerifyOtpOut":
+    """Shared by both Google sign-in paths (web JS-credential flow and the
+    native authorization-code flow below) — everything past "we have a
+    verified Google identity" is identical, so this is the one place that
+    turns that into an app session."""
+    if not payload.get("email_verified", False):
+        raise HTTPException(status_code=401, detail="Google account email is not verified.")
+    email = payload["email"].lower()
+    display_name = payload.get("name")
+    user_id = auth_store.find_or_create_user_by_google(email, display_name)
+    token, _ = token_store.get_store().create(user_id)
+    user = auth_store.get_user(user_id)
+    return VerifyOtpOut(token=token, user=_to_user_out(user))
+
+
 @app.post("/api/auth/google", response_model=VerifyOtpOut)
 def google_sign_in(body: GoogleSignInIn):
-    """Alongside email/phone OTP, not replacing it — same session
-    mechanism (token_store) once the Google token is verified, so
-    everything downstream (get_current_user, the WS endpoints, etc.)
-    doesn't know or care which login method was used.
+    """Web-only path: Google Identity Services' JS SDK renders a button,
+    the browser signs the user in itself, and we just verify the ID token
+    it hands back. This literally cannot work inside the Android app's
+    embedded WebView — Google's own policy refuses to complete OAuth
+    inside "disallowed" embedded user agents, which is why the button
+    would render (or silently fail) in the native app but work fine in a
+    real browser. Native uses /api/auth/google/start + /callback instead.
 
     Verifies the ID token's signature against Google's own public keys
     (google-auth's verify_oauth2_token does this — fetches Google's
@@ -241,16 +261,114 @@ def google_sign_in(body: GoogleSignInIn):
     except ValueError as e:
         raise HTTPException(status_code=401, detail=f"Invalid Google sign-in token: {e}")
 
-    if not payload.get("email_verified", False):
-        raise HTTPException(status_code=401, detail="Google account email is not verified.")
+    return _session_from_google_payload(payload)
 
-    email = payload["email"].lower()
-    display_name = payload.get("name")
 
-    user_id = auth_store.find_or_create_user_by_google(email, display_name)
-    token, _ = token_store.get_store().create(user_id)
-    user = auth_store.get_user(user_id)
-    return VerifyOtpOut(token=token, user=_to_user_out(user))
+_google_oauth_states: set[str] = set()
+
+
+@app.get("/api/auth/google/start")
+def google_sign_in_start():
+    """Native app's entry point — opened in the SYSTEM browser (Chrome
+    Custom Tabs via @capacitor/browser), never the embedded WebView, which
+    is what makes this allowed under Google's policy where the JS-SDK
+    button isn't. Redirects straight into Google's real OAuth consent
+    screen; /callback below picks up the redirect back."""
+    client_id = os.environ.get("GOOGLE_CLIENT_ID")
+    if not client_id:
+        raise HTTPException(status_code=503, detail="Google Sign-In is not configured on this server.")
+    public_url = os.environ.get("VOXBUDDY_PUBLIC_URL", "").rstrip("/")
+    if not public_url:
+        raise HTTPException(status_code=503, detail="VOXBUDDY_PUBLIC_URL is not set on this server.")
+
+    state = secrets.token_urlsafe(24)
+    _google_oauth_states.add(state)
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": f"{public_url}/api/auth/google/callback",
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "prompt": "select_account",
+    }
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}")
+
+
+@app.get("/api/auth/google/callback")
+async def google_sign_in_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    """Google redirects here (a real HTTPS URL, required for a "Web
+    application" OAuth client) after the user finishes signing in in the
+    system browser. Exchanges the one-time code for tokens server-side
+    (needs GOOGLE_CLIENT_SECRET, which only the backend ever holds),
+    verifies the ID token exactly like the web path does, then hands the
+    resulting app session back to the *native app* — not the browser —
+    via a voxbuddy:// deep link, which Android is registered to intercept
+    and reopen the app with (see AndroidManifest.xml's intent-filter)."""
+    deep_link_base = "voxbuddy://auth"
+
+    if error:
+        return HTMLResponse(_google_callback_page(f"{deep_link_base}?error={error}", ok=False))
+    if not code or not state or state not in _google_oauth_states:
+        return HTMLResponse(_google_callback_page(f"{deep_link_base}?error=invalid_state", ok=False))
+    _google_oauth_states.discard(state)
+
+    client_id = os.environ.get("GOOGLE_CLIENT_ID")
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+    public_url = os.environ.get("VOXBUDDY_PUBLIC_URL", "").rstrip("/")
+    if not client_id or not client_secret or not public_url:
+        return HTMLResponse(_google_callback_page(f"{deep_link_base}?error=not_configured", ok=False))
+
+    import httpx
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        token_res = await client.post("https://oauth2.googleapis.com/token", data={
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": f"{public_url}/api/auth/google/callback",
+            "grant_type": "authorization_code",
+        })
+    if token_res.status_code != 200:
+        return HTMLResponse(_google_callback_page(f"{deep_link_base}?error=token_exchange_failed", ok=False))
+
+    id_tok = token_res.json().get("id_token")
+    if not id_tok:
+        return HTMLResponse(_google_callback_page(f"{deep_link_base}?error=no_id_token", ok=False))
+
+    try:
+        payload = google_id_token.verify_oauth2_token(id_tok, google_requests.Request(), client_id)
+    except ValueError:
+        return HTMLResponse(_google_callback_page(f"{deep_link_base}?error=invalid_token", ok=False))
+
+    try:
+        session = _session_from_google_payload(payload)
+    except HTTPException as e:
+        return HTMLResponse(_google_callback_page(f"{deep_link_base}?error={quote(str(e.detail))}", ok=False))
+
+    onboarded = "1" if session.user.onboarded else "0"
+    redirect_url = f"{deep_link_base}?{urlencode({'token': session.token, 'onboarded': onboarded})}"
+    return HTMLResponse(_google_callback_page(redirect_url, ok=True))
+
+
+def _google_callback_page(redirect_url: str, ok: bool) -> str:
+    """Tiny bridge page: real HTTPS pages are all Google's redirect_uri
+    can point at, but the app itself needs to receive the result, so this
+    immediately hands off to the voxbuddy:// deep link. The visible
+    message is only a fallback for the rare case the OS doesn't auto-open
+    the app (deep link handling disabled, no matching app installed)."""
+    message = "Signed in — returning to VoxBuddy…" if ok else "Sign-in didn't complete — returning to VoxBuddy…"
+    return f"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VoxBuddy</title>
+<style>body{{background:#0B0D14;color:#fff;font-family:sans-serif;
+display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:24px}}
+a{{color:#4FD1C5}}</style></head>
+<body><div><p>{message}</p><p><a href="{redirect_url}">Tap here if you're not redirected automatically</a></p></div>
+<script>window.location.href = {redirect_url!r};</script>
+</body></html>"""
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> auth_store.AuthUser:

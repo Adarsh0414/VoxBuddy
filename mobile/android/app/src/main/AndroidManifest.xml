@@ -19,6 +19,18 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Google sign-in deep link: Google can only redirect to a real
+                 HTTPS URL (backend's /api/auth/google/callback), which then
+                 hands off to this scheme so Android reopens the already-
+                 running app (singleTask above) instead of the OS having
+                 nowhere to send the result. Handled in JS via
+                 App.addListener('appUrlOpen', ...). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="voxbuddy" android:host="auth" />
+            </intent-filter>
         </activity>
 
         <provider

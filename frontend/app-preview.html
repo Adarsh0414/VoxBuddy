@@ -314,9 +314,17 @@
      default avatar. Inverted to white via filter since the source SVG is
      solid black, so it reads clearly against the gold/teal gradient. */
   .avatar-lg img.avatar-icon {
-    width: 62%; height: 62%; object-fit: contain;
-    filter: brightness(0) invert(1); opacity: 0.92;
+    width: 74%; height: 74%; object-fit: contain;
+    filter: brightness(0); opacity: 0.92;
   }
+  .google-native-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; max-width: 300px; padding: 11px 16px; border-radius: 24px;
+    background: #202124; color: #fff; border: 1px solid rgba(255,255,255,0.15);
+    font-family: 'Manrope', sans-serif; font-size: 14px; font-weight: 600;
+    cursor: pointer;
+  }
+  .google-native-btn:active { background: #2a2b2e; }
   .profile-name { font-family: 'Fraunces', serif; font-size: 20px; margin-top: 12px; }
   .profile-sub { font-size: 12.5px; color: var(--ink-muted); margin-top: 3px; }
   .edit-profile-btn {
@@ -1010,7 +1018,7 @@
               <div class="v-name">Bright</div><div class="v-desc">Energetic, a bit faster-paced</div>
             </div>
           </div>
-          <button class="setup-cta" onclick="setupGoToStep(4)" style="margin-top:10px;">Continue</button>
+          <button class="setup-cta" onclick="earbudFlowContext='setup'; document.getElementById('setup-progress').style.display=''; const sk=document.getElementById('setup-skip'); sk.textContent='Skip for now'; sk.onclick=()=>finishSetup(true); setupGoToStep(4); checkAlreadyConnectedAudioDevice()" style="margin-top:10px;">Continue</button>
           <div class="setup-back" onclick="setupGoToStep(2)">Back</div>
         </div>
 
@@ -1308,7 +1316,7 @@
         <div class="settings-group">
           <div class="settings-group-label">Devices</div>
           <div class="settings-card">
-            <div class="settings-row"><span class="s-icon" style="color:var(--success)"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="m6.5 6.5 11 11L12 23V1l5.5 5.5-11 11"/></svg></span><span class="s-label">Earbuds</span><span class="s-value" id="settings-earbud-value" style="color:var(--ink-faint)">Not connected</span></div>
+            <div class="settings-row" style="cursor:pointer" onclick="openEarbudSettings()"><span class="s-icon" style="color:var(--success)"><svg class="icon" viewBox="0 0 24 24" style="width:17px;height:17px"><path d="m6.5 6.5 11 11L12 23V1l5.5 5.5-11 11"/></svg></span><span class="s-label">Earbuds</span><span class="s-value" id="settings-earbud-value" style="color:var(--ink-faint)">Not connected</span><svg class="icon" viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--ink-faint)"><path d="m9 18 6-6-6-6"/></svg></div>
           </div>
         </div>
 
@@ -1627,6 +1635,41 @@
     // =====================================================================
     const SetupState = { name: '', language: null, voice: 'warm', earbudConnected: false };
 
+    // Earbud pane (wizard-pane-4) is shared between first-time Setup and
+    // Settings > Earbuds — same markup/IDs, not duplicated — so this flag
+    // is what tells finishSetup()/markEarbudsConnected() whether "done"
+    // means "finish onboarding" (would overwrite the real saved profile
+    // with whatever's currently in SetupState — wrong once the account
+    // already exists) or just "go back to Settings".
+    let earbudFlowContext = 'setup';
+
+    function openEarbudSettings() {
+      earbudFlowContext = 'settings';
+      resetEarbudPaneUI();
+      const progress = document.getElementById('setup-progress');
+      if (progress) progress.style.display = 'none';
+      const skipLink = document.getElementById('setup-skip');
+      skipLink.textContent = 'Cancel';
+      skipLink.onclick = () => goTo('screen-settings');
+      goTo('screen-setup');
+      setupGoToStep(4);
+      checkAlreadyConnectedAudioDevice();
+    }
+
+    function resetEarbudPaneUI() {
+      const wrap = document.getElementById('earbud-visual');
+      if (scanTimeoutHandle) clearTimeout(scanTimeoutHandle);
+      wrap.classList.remove('connected', 'scanning');
+      wrap.innerHTML = '<svg class="icon" viewBox="0 0 24 24" style="width:34px;height:34px;color:var(--ink-muted)"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg>';
+      document.getElementById('earbud-status-title').textContent = 'Ready to scan';
+      document.getElementById('earbud-status-sub').textContent = 'Tap below to look for nearby earbuds';
+      document.getElementById('earbud-device-slot').innerHTML = '';
+      const scanBtn = document.getElementById('setup-scan-btn');
+      scanBtn.disabled = false;
+      scanBtn.textContent = 'Scan for earbuds';
+      scanBtn.style.display = '';
+    }
+
     function setupGoToStep(step) {
       document.querySelectorAll('.wizard-pane').forEach(p => p.classList.remove('active'));
       document.getElementById(`setup-pane-${step}`).classList.add('active');
@@ -1674,11 +1717,51 @@
       return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
     }
 
+    // The visible "black spot"/notch on-device: Android 15+ (targetSdk 36
+    // here) forces edge-to-edge layout — apps can no longer opt out — so
+    // the WebView draws content, including this dark gradient background,
+    // straight behind the status bar and into the camera cutout area.
+    // The cutout itself is a physical hole in the display and will always
+    // render black no matter what's "drawn" there; the fix isn't removing
+    // it (impossible), it's stopping content from being drawn behind/into
+    // that area at all, so it sits inside a plain status bar strip like
+    // it does on every other well-behaved app instead of inside a busy
+    // gradient where it stands out.
+    async function initStatusBarInsets() {
+      if (!isNativePlatform() || !window.Capacitor.Plugins.StatusBar) return;
+      try {
+        const { StatusBar } = window.Capacitor.Plugins;
+        await StatusBar.setOverlaysWebView({ overlay: false });
+        await StatusBar.setBackgroundColor({ color: '#0B0D14' });
+      } catch (err) { /* status bar plugin not available on this build — no-op */ }
+    }
+
     async function startEarbudScan() {
       if (isNativePlatform()) {
         return startEarbudScanNative();
       }
       return startEarbudScanSimulated();
+    }
+
+    // Checked first, every time the earbud pane opens or a scan is
+    // requested — almost every real Bluetooth audio accessory (including
+    // the neckband this was tested against) uses Classic Bluetooth for
+    // audio, which BLE scanning below can never see. If Android already
+    // has an audio device routed there (i.e. it's paired + connected via
+    // system Bluetooth settings, which is all that's actually needed for
+    // audio to work), this finds it immediately with no scan at all.
+    async function checkAlreadyConnectedAudioDevice() {
+      if (!isNativePlatform() || !window.Capacitor.Plugins.AudioDevice) return false;
+      try {
+        const result = await window.Capacitor.Plugins.AudioDevice.getConnectedAudioDevice();
+        if (result && result.connected) {
+          markEarbudsConnected(result.name || 'Bluetooth audio device');
+          return true;
+        }
+      } catch (err) {
+        console.warn('AudioDevice check failed:', err);
+      }
+      return false;
     }
 
     async function startEarbudScanNative() {
@@ -1687,6 +1770,11 @@
       const sub = document.getElementById('earbud-status-sub');
       const scanBtn = document.getElementById('setup-scan-btn');
       const Ble = window.Capacitor.Plugins.BluetoothLe;
+
+      // A neckband/earbuds already paired+connected via system Bluetooth
+      // settings won't show up in a BLE scan (see comment above) — catch
+      // that case first instead of running a scan that can only fail.
+      if (await checkAlreadyConnectedAudioDevice()) return;
 
       wrap.classList.add('scanning');
       title.textContent = 'Scanning…';
@@ -1778,8 +1866,19 @@
       document.getElementById('earbud-device-slot').innerHTML = '';
       const settingsVal = document.getElementById('settings-earbud-value');
       if (settingsVal) { settingsVal.textContent = deviceName || 'Connected'; settingsVal.style.color = 'var(--success)'; }
-      document.getElementById('setup-skip').textContent = 'Continue';
-      document.getElementById('setup-skip').onclick = () => finishSetup(false);
+
+      const skipLink = document.getElementById('setup-skip');
+      if (earbudFlowContext === 'settings') {
+        // Reconnecting from Settings, not first-time onboarding — this
+        // must NOT call finishSetup(), which POSTs whatever's currently
+        // sitting in SetupState (name/language/voice) as the user's
+        // profile and would silently overwrite their real saved settings.
+        skipLink.textContent = 'Done';
+        skipLink.onclick = () => goTo('screen-settings');
+      } else {
+        skipLink.textContent = 'Continue';
+        skipLink.onclick = () => finishSetup(false);
+      }
     }
 
     // ---- Simulated fallback (plain web / browser) ----------------------
@@ -1997,21 +2096,36 @@
     }
 
     // ---- Google Sign-In (alongside email/phone OTP) ---------------------
-    // KNOWN LIMITATION, stated honestly rather than discovered the hard
-    // way later: Google's own policy blocks its OAuth/Identity Services
-    // flow inside most embedded WebViews (including Capacitor's native
-    // Android/iOS shell) as a security measure — you'll see an
-    // "disallowed_useragent" error there even though this works
-    // correctly in a real browser or installed PWA. There's no code fix
-    // for that from this side; the real fix for the native app
-    // specifically is a native Google Sign-In SDK plugin, which is a
-    // separate, not-yet-built piece of work.
+    // Two different flows depending on platform, because Google's own
+    // policy blocks its Identity Services JS flow inside embedded
+    // WebViews (Capacitor's native shell counts as one) — that's exactly
+    // why this rendered/worked on desktop browser but not on-device.
+    //   - Web: Google's JS SDK renders its own button + popup, unchanged.
+    //   - Native: opens Google's real consent screen in the SYSTEM
+    //     browser (Chrome Custom Tabs), which Google does allow, then the
+    //     backend hands the result back via a voxbuddy:// deep link
+    //     (see /api/auth/google/start + /callback in app.py, and
+    //     App.addListener('appUrlOpen', ...) below).
     async function initGoogleSignIn() {
       try {
         const res = await fetch('/api/auth/config');
         const config = await res.json();
-        if (!config.google_client_id || !window.google || !window.google.accounts) return;
+        if (!config.google_client_id) return;
 
+        if (isNativePlatform()) {
+          const container = document.getElementById('google-signin-container');
+          container.innerHTML = '';
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'google-native-btn';
+          btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.58-5.17 3.58-8.82z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.93-2.91l-3.87-3c-1.08.72-2.46 1.15-4.06 1.15-3.12 0-5.77-2.11-6.72-4.94H1.29v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.28 14.3A7.2 7.2 0 0 1 4.9 12c0-.8.14-1.57.38-2.3V6.6H1.29a12 12 0 0 0 0 10.8z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.94 1.19 15.24 0 12 0A12 12 0 0 0 1.29 6.6l3.99 3.1C6.23 6.86 8.88 4.75 12 4.75z"/></svg> Continue with Google';
+          btn.onclick = startNativeGoogleSignIn;
+          container.appendChild(btn);
+          document.getElementById('google-signin-block').style.display = 'block';
+          return;
+        }
+
+        if (!window.google || !window.google.accounts) return;
         window.google.accounts.id.initialize({
           client_id: config.google_client_id,
           callback: handleGoogleCredentialResponse,
@@ -2028,6 +2142,50 @@
         // button would be worse than no button, and OTP login still
         // works regardless of whether this succeeds.
       }
+    }
+
+    async function startNativeGoogleSignIn() {
+      const errEl = document.getElementById('login-error');
+      if (errEl) errEl.textContent = '';
+      try {
+        const { Browser } = window.Capacitor.Plugins;
+        await Browser.open({ url: location.origin + '/api/auth/google/start' });
+      } catch (err) {
+        if (errEl) errEl.textContent = 'Could not open Google sign-in.';
+      }
+    }
+
+    // Fires when the OS reopens the app via the voxbuddy://auth deep link
+    // that /api/auth/google/callback redirects to once Google sign-in
+    // finishes in the system browser tab.
+    function initGoogleDeepLinkListener() {
+      if (!isNativePlatform() || !window.Capacitor.Plugins.App) return;
+      window.Capacitor.Plugins.App.addListener('appUrlOpen', async ({ url }) => {
+        if (!url || !url.startsWith('voxbuddy://auth')) return;
+        try { window.Capacitor.Plugins.Browser?.close(); } catch (err) { /* no open tab to close */ }
+
+        const params = new URL(url).searchParams;
+        const errEl = document.getElementById('login-error');
+        const error = params.get('error');
+        if (error) {
+          if (errEl) errEl.textContent = 'Google sign-in failed: ' + decodeURIComponent(error);
+          return;
+        }
+        const token = params.get('token');
+        const onboarded = params.get('onboarded') === '1';
+        if (!token) return;
+
+        AuthState.token = token;
+        localStorage.setItem('voxbuddy_token', token);
+        try {
+          const res = await fetch('/api/auth/me', { headers: authHeaders() });
+          if (res.ok) {
+            AuthState.user = await res.json();
+            applyAuthUserToProfile();
+          }
+        } catch (err) { /* proceed with just the token; checkExistingLogin will retry */ }
+        goTo(onboarded ? 'screen-home' : 'screen-setup');
+      });
     }
 
     async function handleGoogleCredentialResponse(response) {
@@ -2734,6 +2892,8 @@
 
     checkExistingLogin();
     initGoogleSignIn();
+    initGoogleDeepLinkListener();
+    initStatusBarInsets();
     renderWaveform('login-waveform', 22);
     renderWaveform('home-waveform', 26);
 

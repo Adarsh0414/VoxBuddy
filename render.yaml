@@ -60,3 +60,6 @@ services:
       # backend/.env.example for where to get this (Google Cloud Console).
       - key: GOOGLE_CLIENT_ID
         sync: false
+      # Required for native app sign-in (see backend/.env.example).
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
