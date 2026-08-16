@@ -45,18 +45,35 @@ public class ConversationForegroundService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(NOTIFICATION_ID, buildNotification());
 
-        if (wakeLock == null) {
-            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            if (pm != null) {
-                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VoxBuddy:conversation");
-                wakeLock.setReferenceCounted(false);
+        // Wrapped defensively: an uncaught exception inside a Service
+        // lifecycle callback is fatal to the whole app process, not just
+        // this feature (this is exactly what force-closed the app when
+        // WAKE_LOCK was missing from the manifest — acquire() threw, and
+        // that took the entire process down with it, not just the
+        // background-listening feature). The service call above,
+        // startForeground(), is the one part that must not fail
+        // silently — an active foreground service without a real
+        // notification would violate Android's own requirement — so only
+        // the wake lock, which is a "nice to have" against CPU sleep, is
+        // allowed to fail quietly here.
+        try {
+            if (wakeLock == null) {
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VoxBuddy:conversation");
+                    wakeLock.setReferenceCounted(false);
+                }
             }
-        }
-        if (wakeLock != null && !wakeLock.isHeld()) {
-            // No timeout here deliberately — released explicitly in
-            // onDestroy() when JS calls ConversationService.stop(), not
-            // left to expire mid-conversation.
-            wakeLock.acquire();
+            if (wakeLock != null && !wakeLock.isHeld()) {
+                // No timeout here deliberately — released explicitly in
+                // onDestroy() when JS calls ConversationService.stop(), not
+                // left to expire mid-conversation.
+                wakeLock.acquire();
+            }
+        } catch (Exception e) {
+            // Background listening simply won't resist CPU sleep as
+            // aggressively on whatever device hits this — the
+            // conversation itself still works fine either way.
         }
 
         // START_STICKY: if the OS still kills this process under severe

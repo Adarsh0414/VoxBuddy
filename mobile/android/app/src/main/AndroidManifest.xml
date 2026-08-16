@@ -90,4 +90,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- ConversationForegroundService.java calls wakeLock.acquire() to
+         keep the CPU from sleeping mid-conversation — WAKE_LOCK is a
+         normal (not runtime-prompted) permission, but it still has to be
+         explicitly declared here or the OS throws a SecurityException
+         the instant the service starts, which is exactly what force-
+         closed the app on tapping "Start Conversation": the service
+         crashed before it ever got a chance to do anything, taking the
+         whole process down with it. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 </manifest>
