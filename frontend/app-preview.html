@@ -728,13 +728,13 @@
 
   /* ================= NOTIFICATION PANEL ================= */
   .notif-panel {
-    position: absolute; top: 66px; right: 20px; width: 270px; z-index: 40;
+    position: absolute; top: 66px; right: 20px; width: 270px; z-index: 200;
     background: rgba(18,21,30,0.96); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--glass-border); border-radius: 16px; padding: 6px;
     box-shadow: 0 20px 50px -12px rgba(0,0,0,0.6);
     display: none; flex-direction: column;
   }
-  .notif-panel.open { display: flex; }
+  .notif-panel.open { display: flex !important; }
   .notif-item { padding: 12px 12px; border-radius: 10px; }
   .notif-item:hover { background: rgba(255,255,255,0.04); }
   .notif-item .n-title { font-size: 12.5px; font-weight: 700; }
@@ -1158,7 +1158,7 @@
             <div class="greeting-small" id="home-greeting-time">Hello</div>
             <div class="greeting-big" id="home-greeting-name">there</div>
           </div>
-          <div class="icon-btn" onclick="toggleNotifications(event)"><div class="dot" id="notif-dot" style="display:none;"></div>
+          <div class="icon-btn" onclick="toggleNotifications(event)"><div class="dot" id="notif-dot"></div>
             <svg class="icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
           </div>
           <div class="notif-panel" id="notif-panel"></div>
@@ -1228,14 +1228,14 @@
         <div class="top-row"><div class="greeting-big" style="margin-top:0">History</div></div>
         <div class="search-bar">
           <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input placeholder="Search conversations" />
+          <input id="history-search" placeholder="Search conversations" oninput="applyHistoryFilters()" />
         </div>
         <div class="filter-row">
-          <div class="filter-chip selected">All</div>
-          <div class="filter-chip">This week</div>
-          <div class="filter-chip">Hindi</div>
-          <div class="filter-chip">French</div>
-          <div class="filter-chip">Spanish</div>
+          <div class="filter-chip selected" data-filter="all" onclick="setHistoryFilter('all')">All</div>
+          <div class="filter-chip" data-filter="week" onclick="setHistoryFilter('week')">This week</div>
+          <div class="filter-chip" data-filter="hi" onclick="setHistoryFilter('hi')">Hindi</div>
+          <div class="filter-chip" data-filter="fr" onclick="setHistoryFilter('fr')">French</div>
+          <div class="filter-chip" data-filter="es" onclick="setHistoryFilter('es')">Spanish</div>
         </div>
 
         <div id="history-list" style="margin-top:18px;">
@@ -1260,7 +1260,7 @@
       <!-- ============ PROFILE ============ -->
       <div class="screen" id="screen-profile">
         <div class="top-row"><div class="greeting-big" style="margin-top:0">Profile</div>
-          <div class="icon-btn"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+          <div class="icon-btn" onclick="goTo('screen-settings')"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
         </div>
 
         <div class="profile-header">
@@ -1268,7 +1268,7 @@
           <div class="profile-name">Adarsh</div>
           <div class="profile-flair" id="profile-flair"></div>
           <div class="profile-sub">VIT Bhopal · Member since 2026</div>
-          <div class="edit-profile-btn">Edit profile</div>
+          <div class="edit-profile-btn" onclick="openEditProfile()">Edit profile</div>
         </div>
 
         <div class="profile-stats-grid">
@@ -1459,6 +1459,8 @@
       if (id === 'screen-profile' && typeof refreshStats === 'function') { refreshStats(); refreshLanguageBreakdown(); }
     }
 
+    const UNAUTHENTICATED_SCREENS = ['screen-login', 'screen-setup'];
+
     // ---- Hardware/gesture back button (native only) -----------------------
     // Pops the stack and re-shows the previous screen. On screen-home with
     // nothing left to pop, a second back press within 2s exits the app —
@@ -1467,15 +1469,27 @@
     let lastBackPressAt = 0;
     if (isNativePlatform() && window.Capacitor.Plugins.App) {
       window.Capacitor.Plugins.App.addListener('backButton', () => {
-        // Close an open modal/detail pane first if one is on top of the
-        // stack, same as tapping its own back arrow would.
-        if (screenStack.length > 1) {
+        // Guard against popping back into an authenticated screen (home,
+        // profile, settings, etc.) after signing out — the stack still
+        // remembers those screens from before logout, and without this
+        // check, one back-swipe from the login screen would silently
+        // "undo" the sign-out and drop straight back into the account
+        // with no re-authentication at all.
+        if (!AuthState.token) {
+          if (screenStack[screenStack.length - 1] !== 'screen-login') {
+            screenStack.length = 0;
+            screenStack.push('screen-login');
+            goTo('screen-login', { fromBack: true });
+            return;
+          }
+          // Already at login with nothing to go back to — fall through
+          // to the exit-app handling below, same as the home-screen case.
+        } else if (screenStack.length > 1) {
           screenStack.pop();
           const prev = screenStack[screenStack.length - 1];
           goTo(prev, { fromBack: true });
           return;
-        }
-        if (screenStack[0] !== 'screen-home' && document.getElementById('screen-home')) {
+        } else if (screenStack[0] !== 'screen-home' && document.getElementById('screen-home')) {
           screenStack[0] = 'screen-home';
           goTo('screen-home', { fromBack: true });
           return;
@@ -1984,23 +1998,38 @@
       }
     }
 
+    // Rewritten to set the panel's visibility via inline style directly
+    // (not just the CSS class) — belt-and-suspenders against any CSS
+    // specificity/cascade issue silently keeping it hidden, since a
+    // "nothing visibly happens on tap" bug is otherwise very hard to
+    // diagnose from a screenshot alone.
     function toggleNotifications(event) {
-      event.stopPropagation();
+      if (event) event.stopPropagation();
       const panel = document.getElementById('notif-panel');
-      const isOpen = panel.classList.toggle('open');
+      const isOpen = panel.classList.contains('open');
       if (isOpen) {
-        panel.innerHTML = `
-          <div class="notif-item"><div class="n-title">Welcome to VoxBuddy</div><div class="n-body">Tap "Start Conversation" any time to try the live demo.</div></div>
-          <div class="notif-item"><div class="n-title">Group conversations</div><div class="n-body">VoxBuddy can now follow two people talking to you at once.</div></div>
-        `;
-        document.getElementById('notif-dot').style.display = 'none';
-        document.addEventListener('click', closeNotificationsOnOutsideClick);
+        panel.classList.remove('open');
+        panel.style.display = 'none';
+        document.removeEventListener('click', closeNotificationsOnOutsideClick);
+        return;
       }
+      panel.innerHTML = `
+        <div class="notif-item"><div class="n-title">Welcome to VoxBuddy</div><div class="n-body">Tap "Start Conversation" any time to try the live demo.</div></div>
+        <div class="notif-item"><div class="n-title">Group conversations</div><div class="n-body">VoxBuddy can now follow two people talking to you at once.</div></div>
+      `;
+      panel.classList.add('open');
+      panel.style.display = 'flex';
+      const dot = document.getElementById('notif-dot');
+      if (dot) dot.style.display = 'none';
+      // Deferred by one tick so the click that just opened the panel
+      // doesn't immediately bubble into this same listener and close it.
+      setTimeout(() => document.addEventListener('click', closeNotificationsOnOutsideClick), 0);
     }
     function closeNotificationsOnOutsideClick(e) {
       const panel = document.getElementById('notif-panel');
       if (!panel.contains(e.target)) {
         panel.classList.remove('open');
+        panel.style.display = 'none';
         document.removeEventListener('click', closeNotificationsOnOutsideClick);
       }
     }
@@ -2289,7 +2318,14 @@
       AuthState.token = null;
       AuthState.user = null;
       AppState.sessionId = null;
-      goTo('screen-login');
+      // Wipe the back-navigation stack, not just the visible screen — a
+      // stale stack full of authenticated screens is exactly what let a
+      // single back-swipe drop the user right back into the account with
+      // no re-login (see the backButton guard above for the second layer
+      // of defense against this).
+      screenStack.length = 0;
+      screenStack.push('screen-login');
+      goTo('screen-login', { fromBack: true });
     }
 
     async function checkExistingLogin() {
@@ -2357,27 +2393,67 @@
         </div>`;
     }
 
+    // Raw conversation list from the last fetch, cached so switching
+    // filter chips / typing a search query doesn't need a re-fetch —
+    // filtering/searching just re-renders this in memory.
+    let HistoryCache = [];
+    let HistoryFilter = 'all';
+
     async function refreshHistory() {
       try {
         const res = await fetch('/api/history', { headers: authHeaders() });
         const conversations = await res.json();
+        HistoryCache = conversations;
 
         const homeList = document.getElementById('home-recent-list');
-        const historyList = document.getElementById('history-list');
-
         if (!conversations.length) {
           const emptyMsg = '<div style="font-size:12.5px;color:var(--ink-faint);padding:8px 2px;">No conversations yet — tap "Start Conversation" above.</div>';
           if (homeList) homeList.innerHTML = emptyMsg;
-          if (historyList) historyList.innerHTML = emptyMsg.replace('above', 'on Home');
-          return;
+        } else if (homeList) {
+          homeList.innerHTML = conversations.slice(0, 2).map(conversationCardHTML).join('');
         }
 
-        if (homeList) homeList.innerHTML = conversations.slice(0, 2).map(conversationCardHTML).join('');
-        if (historyList) historyList.innerHTML = conversations.map(conversationCardHTML).join('');
+        applyHistoryFilters();
       } catch (err) {
         console.warn('Could not load history — backend unreachable.', err);
       }
     }
+
+    function setHistoryFilter(filter) {
+      HistoryFilter = filter;
+      document.querySelectorAll('.filter-chip').forEach(chip => {
+        chip.classList.toggle('selected', chip.dataset.filter === filter);
+      });
+      applyHistoryFilters();
+    }
+
+    function applyHistoryFilters() {
+      const historyList = document.getElementById('history-list');
+      if (!historyList) return;
+
+      if (!HistoryCache.length) {
+        historyList.innerHTML = '<div style="font-size:12.5px;color:var(--ink-faint);padding:8px 2px;">No conversations yet — tap "Start Conversation" on Home.</div>';
+        return;
+      }
+
+      const query = (document.getElementById('history-search')?.value || '').trim().toLowerCase();
+      const oneWeekAgo = Date.now() / 1000 - 7 * 24 * 60 * 60;
+
+      let filtered = HistoryCache;
+      if (HistoryFilter === 'week') {
+        filtered = filtered.filter(c => c.started_at >= oneWeekAgo);
+      } else if (HistoryFilter !== 'all') {
+        filtered = filtered.filter(c => c.target_lang === HistoryFilter);
+      }
+      if (query) {
+        filtered = filtered.filter(c => (c.first_line || '').toLowerCase().includes(query));
+      }
+
+      historyList.innerHTML = filtered.length
+        ? filtered.map(conversationCardHTML).join('')
+        : '<div style="font-size:12.5px;color:var(--ink-faint);padding:8px 2px;">No conversations match this filter.</div>';
+    }
+
 
     async function openDetail(conversationId) {
       try {
@@ -2632,6 +2708,14 @@
         return;
       }
 
+      // Keeps the process (and this mic capture) alive if the app gets
+      // backgrounded mid-conversation — see ConversationForegroundService
+      // for why this is required at all, not optional polish.
+      if (isNativePlatform() && window.Capacitor.Plugins.ConversationService) {
+        try { await window.Capacitor.Plugins.ConversationService.start(); }
+        catch (err) { console.warn('Could not start background service:', err); }
+      }
+
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
       const ws = new WebSocket(`${protocol}://${location.host}/ws/${sessionId}/audio`);
       ws.binaryType = 'arraybuffer';
@@ -2701,6 +2785,9 @@
       if (AppState.micAudioCtx) { AppState.micAudioCtx.close(); AppState.micAudioCtx = null; }
       if (AppState.micStream) { AppState.micStream.getTracks().forEach(t => t.stop()); AppState.micStream = null; }
       if (AppState.micWs) { AppState.micWs.close(); AppState.micWs = null; }
+      if (isNativePlatform() && window.Capacitor.Plugins.ConversationService) {
+        window.Capacitor.Plugins.ConversationService.stop().catch(() => {});
+      }
     }
 
     // ---- Background noise filtering (adaptive energy-based gate) ------

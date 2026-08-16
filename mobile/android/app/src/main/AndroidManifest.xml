@@ -40,6 +40,15 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Started/stopped from JS around each conversation (see
+             ConversationServicePlugin.java + startConversation()/
+             stopMicCapture() in app-preview.html). foregroundServiceType
+             must match the FOREGROUND_SERVICE_MICROPHONE permission above. -->
+        <service
+            android:name=".ConversationForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
     </application>
 
     <!-- Permissions -->
@@ -67,4 +76,18 @@
         tools:targetApi="s" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
         android:maxSdkVersion="30" />
+    <!-- Required to keep the mic/WebSocket pipeline running while a
+         conversation is active and the app is backgrounded — without a
+         foreground service, Android throttles/suspends the WebView's
+         background execution within seconds to minutes and can kill the
+         process outright under memory pressure, which is why listening
+         previously stopped as soon as the app left the foreground.
+         POST_NOTIFICATIONS is needed on Android 13+ to actually show the
+         persistent notification the foreground service is required to
+         display (Android has no "invisible background microphone" mode —
+         that's a deliberate privacy protection, not a limitation of this
+         app specifically). See ConversationForegroundService.java. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
