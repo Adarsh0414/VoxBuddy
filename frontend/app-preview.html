@@ -1433,15 +1433,12 @@
     // so Android's back gesture had nothing to "go back" through and
     // defaulted to closing the app. This stack is what the backButton
     // listener below walks instead.
-    // Starts empty (not pre-seeded with 'screen-login') deliberately —
-    // on an auto-login with a saved token, checkExistingLogin() jumps
-    // straight to goTo('screen-home') and the user never actually sees
-    // the login screen that session. A hardcoded ['screen-login'] base
-    // meant the stack silently carried a phantom login screen "beneath"
-    // Home that the user never visited — one back-swipe from Home would
-    // reveal it, which is exactly the jump-to-login bug in the video.
-    // Building the stack purely from real goTo() calls means it can only
-    // ever contain screens the user actually navigated through.
+    // Back-navigation stack — scoped ONLY to the short, linear pre-login /
+    // first-time-setup-wizard flow (email or Google sign-in -> OTP ->
+    // setup steps 1-4), where stepping back one screen at a time is the
+    // normal, expected thing to happen. It is NOT used at all once the
+    // person is a fully onboarded, logged-in user — see the backButton
+    // handler below for why.
     const screenStack = [];
 
     function goTo(id, opts) {
@@ -1470,20 +1467,95 @@
 
     const UNAUTHENTICATED_SCREENS = ['screen-login', 'screen-setup'];
 
+    function isFullyOnboarded() {
+      return !!(AuthState.token && AuthState.user && AuthState.user.onboarded);
+    }
+
+    // One level of nesting per tab — the four tab roots (Home, History,
+    // Profile, Settings) sit at the top; everything else here is a
+    // sub-screen opened from exactly one of them. Back from a sub-screen
+    // returns to ITS OWN parent tab, not always to Home — e.g. back from
+    // a conversation transcript returns to History, not Home — while
+    // back from a tab root itself goes to Home (or exits, if already on
+    // Home). screen-setup and screen-picker are context-dependent (they
+    // double as steps in the pre-onboarding wizard too) so they're
+    // resolved separately below rather than listed here.
+    const SCREEN_PARENT = {
+      'screen-history': 'screen-home',
+      'screen-profile': 'screen-home',
+      'screen-settings': 'screen-home',
+      'screen-convo': 'screen-home',
+      'screen-detail': 'screen-history',
+      'screen-edit-profile': 'screen-profile',
+      'screen-privacy-data': 'screen-settings',
+      'screen-help': 'screen-settings',
+      'screen-voice-picker': 'screen-settings',
+    };
+
+    function parentScreenFor(activeId) {
+      if (activeId === 'screen-picker') {
+        // Mirrors closePicker()'s own logic — this screen is reused by
+        // both the settings language-picker and the setup wizard.
+        return PickerState.context === 'setup' ? 'screen-setup' : 'screen-settings';
+      }
+      if (activeId === 'screen-setup') {
+        // Only reachable post-onboarding via Settings > Earbuds (the
+        // wizard use of this same screen is handled entirely by the
+        // other, pre-onboarding branch below, never this one).
+        return 'screen-settings';
+      }
+      return SCREEN_PARENT[activeId] || 'screen-home';
+    }
+
     // ---- Hardware/gesture back button (native only) -----------------------
-    // Pops the stack and re-shows the previous screen. On screen-home with
-    // nothing left to pop, a second back press within 2s exits the app —
-    // same "press back again to exit" pattern most Android apps use,
-    // rather than exiting on the very first press.
+    // Two completely different behaviors depending on where the person is
+    // in their relationship with the app, by design, not by accident:
+    //
+    // 1. Fully onboarded, normal day-to-day use (the vast majority of the
+    //    time back gets pressed): back is FLAT, not historical. Any screen
+    //    other than Home — Settings, Profile, the earbud pane, the
+    //    language picker, a conversation, wherever — goes straight to
+    //    Home in one press, regardless of how many screens were opened to
+    //    get there. Home itself needs a second press within 2s to exit,
+    //    same "press back again to exit" pattern most apps use. This is
+    //    deliberately NOT "undo my last navigation" — replaying every
+    //    screen ever opened this session (Settings -> earbuds -> language
+    //    picker -> ... -> all the way back to the login screen) is
+    //    exactly the confusing behavior reported and is not what most
+    //    people expect from "back" in a tab-based app.
+    //
+    // 2. Signing in / first-time setup wizard (short, linear, and the
+    //    person hasn't reached Home for the first time yet): normal
+    //    step-by-step back through screenStack, since undoing one step of
+    //    a multi-step signup flow (e.g. OTP entry -> back to email) is
+    //    the standard, expected thing there.
     let lastBackPressAt = 0;
     if (isNativePlatform() && window.Capacitor.Plugins.App) {
       window.Capacitor.Plugins.App.addListener('backButton', () => {
-        // Guard against popping back into an authenticated screen (home,
-        // profile, settings, etc.) after signing out — the stack still
-        // remembers those screens from before logout, and without this
-        // check, one back-swipe from the login screen would silently
-        // "undo" the sign-out and drop straight back into the account
-        // with no re-authentication at all.
+        if (isFullyOnboarded()) {
+          const active = document.querySelector('.screen.active');
+          const activeId = active ? active.id : 'screen-home';
+          if (activeId !== 'screen-home') {
+            goTo(parentScreenFor(activeId), { fromBack: true });
+            return;
+          }
+          const now = Date.now();
+          if (now - lastBackPressAt < 2000) {
+            window.Capacitor.Plugins.App.exitApp();
+          } else {
+            lastBackPressAt = now;
+            showExitHintToast();
+          }
+          return;
+        }
+
+        // Not fully onboarded yet (signing in, or mid setup-wizard) —
+        // ordinary step-by-step back through the stack. Also guards
+        // against popping back into an authenticated screen after
+        // signing out, since the stack can still hold screens from
+        // before logout() cleared AuthState — without this, one
+        // back-swipe from the login screen could silently "undo" a
+        // sign-out with no re-authentication at all.
         if (!AuthState.token) {
           if (screenStack[screenStack.length - 1] !== 'screen-login') {
             screenStack.length = 0;
@@ -1491,16 +1563,10 @@
             goTo('screen-login', { fromBack: true });
             return;
           }
-          // Already at login with nothing to go back to — fall through
-          // to the exit-app handling below, same as the home-screen case.
         } else if (screenStack.length > 1) {
           screenStack.pop();
           const prev = screenStack[screenStack.length - 1];
           goTo(prev, { fromBack: true });
-          return;
-        } else if (screenStack[0] !== 'screen-home' && document.getElementById('screen-home')) {
-          screenStack[0] = 'screen-home';
-          goTo('screen-home', { fromBack: true });
           return;
         }
         const now = Date.now();
@@ -1956,6 +2022,10 @@
         applyAuthUserToProfile();
       } catch (err) {
         console.warn('Could not save onboarding — continuing anyway.', err);
+        // Reached Home either way — back-button behavior should treat
+        // this as "onboarded" regardless of whether the save round-trip
+        // succeeded; that's a data-sync concern, not a navigation one.
+        if (AuthState.user) AuthState.user.onboarded = true;
       }
       goTo('screen-home');
       await Promise.all([refreshHistory(), refreshStats()]);
