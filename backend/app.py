@@ -452,6 +452,29 @@ def logout(authorization: str | None = Header(default=None)):
     return {"ok": True}
 
 
+@app.delete("/api/auth/account")
+def delete_account(authorization: str | None = Header(default=None),
+                    user: auth_store.AuthUser = Depends(get_current_user)):
+    """Permanent account deletion (Profile > Delete account). Removes the
+    user's conversations/turns, their user row, and every session token
+    tied to them — signing back in afterward creates a brand-new account
+    from scratch, nothing is recovered or reactivated.
+
+    This alone is enough to invalidate every existing session everywhere,
+    including under VOXBUDDY_SESSION_STORE=redis: get_current_user() (and
+    every other authenticated endpoint) always re-resolves a token to a
+    live user via auth_store.get_user() on each request, so a token that
+    still technically exists in Redis stops working the instant the
+    user row it points to is gone, with no separate "revoke all Redis
+    tokens for this user" step needed.
+    """
+    persistence.delete_all(user_id=user.id)
+    auth_store.delete_user(user.id)
+    if authorization and authorization.startswith("Bearer "):
+        token_store.get_store().delete(authorization.removeprefix("Bearer ").strip())
+    return {"ok": True}
+
+
 @app.post("/api/session")
 def create_session():
     session_id = str(uuid.uuid4())

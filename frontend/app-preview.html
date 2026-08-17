@@ -824,8 +824,22 @@
     <div class="ambient-blob b3"></div>
     <div class="app-body">
 
+      <!-- ============ SPLASH ============ -->
+      <!-- This, not screen-login, is what's active on first paint —
+           checkExistingLogin() below needs to await a network round-trip
+           before it knows whether to land on Login, Setup, or Home, and
+           without something here to hold that gap, the raw login screen
+           (email field, Google button, etc.) would flash on-screen for
+           that entire wait, then jump when the destination screen is
+           swapped in. This is just the app's own background + mark, so
+           nothing that looks like a "real screen" is ever visible before
+           the app has actually decided where it's taking you. -->
+      <div class="screen active" id="screen-splash" style="display:flex;align-items:center;justify-content:center;">
+        <img src="/static/icons/icon-192.png" alt="" style="width:72px;height:72px;border-radius:20px;opacity:0.92;">
+      </div>
+
       <!-- ============ LOGIN ============ -->
-      <div class="screen active" id="screen-login" style="padding-top:64px;">
+      <div class="screen" id="screen-login" style="padding-top:64px;">
         <!-- Constellation/globe background art — original SVG, not a
              stock photo (copyright-safe, works offline, matches the
              brand palette exactly). Grounded in the actual tagline
@@ -1018,7 +1032,7 @@
               <div class="v-name">Bright</div><div class="v-desc">Energetic, a bit faster-paced</div>
             </div>
           </div>
-          <button class="setup-cta" onclick="earbudFlowContext='setup'; document.getElementById('setup-progress').style.display=''; const sk=document.getElementById('setup-skip'); sk.textContent='Skip for now'; sk.onclick=()=>finishSetup(true); setupGoToStep(4); checkAlreadyConnectedAudioDevice()" style="margin-top:10px;">Continue</button>
+          <button class="setup-cta" onclick="earbudFlowContext='setup'; document.getElementById('setup-progress').style.display=''; const sk=document.getElementById('setup-skip'); sk.textContent='Skip for now'; sk.onclick=()=>finishSetup(true); setupGoToStep(4); checkAlreadyConnectedAudioDevice(); requestMicPermissionUpfront()" style="margin-top:10px;">Continue</button>
           <div class="setup-back" onclick="setupGoToStep(2)">Back</div>
         </div>
 
@@ -1173,16 +1187,6 @@
             <svg class="icon" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg>
             Start Conversation
           </button>
-          <!-- Real mic capture (getUserMedia -> PCM16 -> /ws/{id}/audio),
-               separate from the scripted DEMO_EXCHANGE. Off by default so
-               the existing demo flow is unaffected; flip it on to actually
-               speak into your own microphone. See startMicCapture() below
-               for what "real" means here with VOXBUDDY_ASR_PROVIDER=mock
-               (transport-only, no real transcription) vs =assemblyai. -->
-          <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px;color:var(--ink-faint);cursor:pointer;">
-            <input type="checkbox" id="use-real-mic-toggle" style="width:15px;height:15px;">
-            Use real microphone instead of demo script
-          </label>
         </div>
 
         <div class="lang-row">
@@ -1289,6 +1293,7 @@
         </div>
 
         <div class="signout-btn" onclick="logout()">Sign out</div>
+        <div class="signout-btn" style="margin-top:10px;opacity:0.85;" onclick="openDeleteAccountConfirm()">Delete account</div>
       </div>
 
       <!-- ============ SETTINGS ============ -->
@@ -1375,6 +1380,25 @@
       <button class="tab-btn" data-tab="screen-settings" onclick="goTo('screen-settings')">
         <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings
       </button>
+    </div>
+  </div>
+
+  <!-- Delete-account confirmation — deliberately a second explicit step,
+       not a single tap, given this is irreversible (wipes conversations,
+       the account row, and every session everywhere — see DELETE
+       /api/auth/account). Positioned outside the .screen system as a
+       fixed overlay so it can appear above whichever tab is active. -->
+  <div id="delete-account-modal" style="display:none;position:fixed;inset:0;z-index:300;align-items:center;justify-content:center;padding:24px;background:rgba(5,6,10,0.72);">
+    <div style="width:100%;max-width:340px;background:var(--bg-card);border:1px solid var(--glass-border);border-radius:20px;padding:24px;">
+      <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:600;color:var(--ink);margin-bottom:10px;">Delete your account?</div>
+      <div style="font-size:13.5px;color:var(--ink-muted);line-height:1.5;margin-bottom:20px;">
+        This permanently deletes your profile, every saved conversation, and signs you out everywhere. This can't be undone — you'll start from scratch if you sign back in.
+      </div>
+      <div id="delete-account-error" style="font-size:12.5px;color:var(--danger);margin-bottom:12px;"></div>
+      <div style="display:flex;gap:10px;">
+        <div class="setup-cta" style="flex:1;margin-top:0;background:var(--bg-raised);color:var(--ink);box-shadow:none;" onclick="closeDeleteAccountConfirm()">Cancel</div>
+        <div class="setup-cta" id="delete-account-confirm-btn" style="flex:1;margin-top:0;background:var(--danger);color:#fff;box-shadow:none;" onclick="confirmDeleteAccount()">Delete</div>
+      </div>
     </div>
   </div>
 
@@ -1757,6 +1781,24 @@
       scanBtn.disabled = false;
       scanBtn.textContent = 'Scan for earbuds';
       scanBtn.style.display = '';
+    }
+
+    // Requested once here during setup — rather than leaving it to fire
+    // on the first "Start Conversation" tap — since the mic is no longer
+    // optional (the demo-script toggle is gone; every conversation uses
+    // the real microphone now). Immediately stops the track again since
+    // this call only exists to get the OS permission grant recorded; the
+    // real capture stream is opened fresh in startMicCapture() per call.
+    async function requestMicPermissionUpfront() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+      } catch (err) {
+        console.warn('Microphone permission not granted during setup:', err);
+        // Not fatal here — startMicCapture() re-prompts (or shows its
+        // own "Microphone permission denied" status line) the first time
+        // a conversation is actually started.
+      }
     }
 
     function setupGoToStep(step) {
@@ -2389,22 +2431,54 @@
       updateGreeting();
     }
 
-    async function logout() {
-      try {
-        await fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() });
-      } catch (err) { /* logging out locally regardless of network state */ }
+    // Shared by logout() and confirmDeleteAccount() — everything past
+    // "the server-side session is gone" is identical: clear local state
+    // and land back on a clean login screen with no stale navigation
+    // history behind it (see the backButton guard for why an un-cleared
+    // stack is a real security gap, not just cosmetic).
+    function clearLocalSessionAndGoToLogin() {
       localStorage.removeItem('voxbuddy_token');
       AuthState.token = null;
       AuthState.user = null;
       AppState.sessionId = null;
-      // Wipe the back-navigation stack, not just the visible screen — a
-      // stale stack full of authenticated screens is exactly what let a
-      // single back-swipe drop the user right back into the account with
-      // no re-login (see the backButton guard above for the second layer
-      // of defense against this).
       screenStack.length = 0;
       screenStack.push('screen-login');
       goTo('screen-login', { fromBack: true });
+    }
+
+    async function logout() {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() });
+      } catch (err) { /* logging out locally regardless of network state */ }
+      clearLocalSessionAndGoToLogin();
+    }
+
+    function openDeleteAccountConfirm() {
+      document.getElementById('delete-account-error').textContent = '';
+      document.getElementById('delete-account-modal').style.display = 'flex';
+    }
+
+    function closeDeleteAccountConfirm() {
+      document.getElementById('delete-account-modal').style.display = 'none';
+    }
+
+    async function confirmDeleteAccount() {
+      const btn = document.getElementById('delete-account-confirm-btn');
+      const errEl = document.getElementById('delete-account-error');
+      errEl.textContent = '';
+      btn.textContent = 'Deleting…';
+      btn.style.pointerEvents = 'none';
+      try {
+        const res = await fetch('/api/auth/account', { method: 'DELETE', headers: authHeaders() });
+        if (!res.ok) throw new Error('Delete failed');
+        closeDeleteAccountConfirm();
+        clearLocalSessionAndGoToLogin();
+      } catch (err) {
+        errEl.textContent = "Couldn't delete your account — check your connection and try again.";
+      } finally {
+        btn.textContent = 'Delete';
+        btn.style.pointerEvents = '';
+      }
     }
 
     async function checkExistingLogin() {
@@ -2703,14 +2777,6 @@
 
     // A short scripted exchange (same shopkeeper scenario used elsewhere in
     // this project) that plays out over the REAL WebSocket + CIE once a
-    // conversation starts, so the calm empty-orb screen is backed by an
-    // actual pipeline run, not just a static animation.
-    const DEMO_EXCHANGE = [
-      { speaker_label: 'shopkeeper', text: 'namaste, kitne ka hai yeh?', turn_taking_score: 0.9, semantic_coherence_score: 0.9, delay: 900 },
-      { speaker_label: 'shopkeeper', text: 'aap kahan se ho?', turn_taking_score: 0.85, semantic_coherence_score: 0.85, delay: 3200 },
-      { speaker_label: 'shopkeeper', text: 'accha, bahut accha!', turn_taking_score: 0.85, semantic_coherence_score: 0.8, delay: 3200 },
-    ];
-
     // ---- Real TTS playback --------------------------------------------
     // session/manager.py's _translate_and_record now attaches the TTS
     // agent's output to every pipeline result instead of discarding it.
@@ -2745,23 +2811,12 @@
       AppState.intentionalClose = false;
       AppState.reconnectAttempts = 0;
 
-      const useRealMic = document.getElementById('use-real-mic-toggle').checked;
-      if (useRealMic) {
-        document.getElementById('convo-waveform').classList.add('live-driven');
-        await startMicCapture(sessionId);
-        return;
-      }
-
-      connectConversationSocket(sessionId);
-
-      for (const step of DEMO_EXCHANGE) {
-        await new Promise(r => setTimeout(r, step.delay));
-        if (!AppState.ws || AppState.ws.readyState !== WebSocket.OPEN) break;
-        AppState.ws.send(JSON.stringify({
-          speaker_label: step.speaker_label, text: step.text, target_lang: 'en',
-          turn_taking_score: step.turn_taking_score, semantic_coherence_score: step.semantic_coherence_score,
-        }));
-      }
+      // Always real microphone now — no more demo-script toggle. See
+      // startMicCapture() below for what "real" means with
+      // VOXBUDDY_ASR_PROVIDER=mock (transport-only, no real transcription)
+      // vs =assemblyai (actual speech-to-text).
+      document.getElementById('convo-waveform').classList.add('live-driven');
+      await startMicCapture(sessionId);
     }
 
     // ---- Real microphone capture -------------------------------------

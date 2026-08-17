@@ -315,6 +315,28 @@ def delete_token(token: str, db_path: Path | None = None) -> None:
         conn.execute("DELETE FROM auth_tokens WHERE token = ?", (token,))
 
 
+def delete_user(user_id: int, db_path: Path | None = None) -> None:
+    """Full account deletion (Profile > Delete account). Removes the user
+    row itself plus every auth-related trace of them: all their session
+    tokens (so any other signed-in device is immediately logged out too,
+    not just this one) and any pending OTP codes under their email/phone.
+    Does NOT touch conversations/turns — that's persistence.delete_all(),
+    called separately by the /api/auth/account DELETE endpoint, since
+    that lives in a different module with its own db connection.
+    Signing back in afterwards creates a brand-new user row (new id, no
+    memory of the old one) rather than reactivating anything — this is a
+    real, one-way deletion, not a soft-delete/deactivation flag.
+    """
+    with _connect(db_path) as conn:
+        row = conn.execute("SELECT email, phone FROM users WHERE id = ?", (user_id,)).fetchone()
+        conn.execute("DELETE FROM auth_tokens WHERE user_id = ?", (user_id,))
+        if row:
+            for identifier in (row["email"], row["phone"]):
+                if identifier:
+                    conn.execute("DELETE FROM otp_codes WHERE identifier = ?", (identifier,))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
 def get_user(user_id: int, db_path: Path | None = None) -> AuthUser | None:
     with _connect(db_path) as conn:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
