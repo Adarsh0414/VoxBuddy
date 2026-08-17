@@ -834,8 +834,8 @@
            swapped in. This is just the app's own background + mark, so
            nothing that looks like a "real screen" is ever visible before
            the app has actually decided where it's taking you. -->
-      <div class="screen active" id="screen-splash" style="display:flex;align-items:center;justify-content:center;">
-        <img src="/static/icons/icon-192.png" alt="" style="width:72px;height:72px;border-radius:20px;opacity:0.92;">
+      <div class="screen active" id="screen-splash">
+        <img src="/static/icons/icon-192.png" alt="" style="width:72px;height:72px;border-radius:20px;opacity:0.92;margin:auto;">
       </div>
 
       <!-- ============ LOGIN ============ -->
@@ -1848,24 +1848,23 @@
       return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
     }
 
-    // The visible "black spot"/notch on-device: Android 15+ (targetSdk 36
-    // here) forces edge-to-edge layout — apps can no longer opt out — so
-    // the WebView draws content, including this dark gradient background,
-    // straight behind the status bar and into the camera cutout area.
-    // The cutout itself is a physical hole in the display and will always
-    // render black no matter what's "drawn" there; the fix isn't removing
-    // it (impossible), it's stopping content from being drawn behind/into
-    // that area at all, so it sits inside a plain status bar strip like
-    // it does on every other well-behaved app instead of inside a busy
-    // gradient where it stands out.
-    async function initStatusBarInsets() {
-      if (!isNativePlatform() || !window.Capacitor.Plugins.StatusBar) return;
-      try {
-        const { StatusBar } = window.Capacitor.Plugins;
-        await StatusBar.setOverlaysWebView({ overlay: false });
-        await StatusBar.setBackgroundColor({ color: '#0B0D14' });
-      } catch (err) { /* status bar plugin not available on this build — no-op */ }
-    }
+    // A prior theory here was that this was a punch-hole camera cutout
+    // being exposed by forced edge-to-edge layout on Android 15+, "fixed"
+    // by forcing the native status bar to a solid background color via
+    // setBackgroundColor(). That was wrong, and this function actively
+    // caused a DIFFERENT, worse bug: on MIUI/HyperOS devices with the
+    // "show network speed in status bar" feature enabled, forcing the
+    // status bar's background color clashes with MIUI's own
+    // network-speed-indicator overlay — its pill-shaped background chip
+    // still draws, but the "X.XX KB/s" text inside it doesn't, leaving a
+    // solid black pill with no content. Confirmed by direct comparison: the
+    // same phone's home screen (VoxBuddy not running at all) shows that
+    // network speed text completely normally; only forcing this app's own
+    // status bar color broke it. Removed entirely rather than patched —
+    // the punch-hole-camera theory this was chasing was never actually
+    // confirmed in the first place, so there's nothing known-good this
+    // needs to preserve, and leaving the OS's own status bar theming alone
+    // is the safer default.
 
     async function startEarbudScan() {
       if (isNativePlatform()) {
@@ -3114,7 +3113,6 @@
     checkExistingLogin();
     initGoogleSignIn();
     initGoogleDeepLinkListener();
-    initStatusBarInsets();
     renderWaveform('login-waveform', 22);
     renderWaveform('home-waveform', 26);
 
