@@ -1433,7 +1433,16 @@
     // so Android's back gesture had nothing to "go back" through and
     // defaulted to closing the app. This stack is what the backButton
     // listener below walks instead.
-    const screenStack = ['screen-login'];
+    // Starts empty (not pre-seeded with 'screen-login') deliberately —
+    // on an auto-login with a saved token, checkExistingLogin() jumps
+    // straight to goTo('screen-home') and the user never actually sees
+    // the login screen that session. A hardcoded ['screen-login'] base
+    // meant the stack silently carried a phantom login screen "beneath"
+    // Home that the user never visited — one back-swipe from Home would
+    // reveal it, which is exactly the jump-to-login bug in the video.
+    // Building the stack purely from real goTo() calls means it can only
+    // ever contain screens the user actually navigated through.
+    const screenStack = [];
 
     function goTo(id, opts) {
       const fromBack = opts && opts.fromBack;
