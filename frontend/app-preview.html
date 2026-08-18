@@ -2897,9 +2897,18 @@
           AppState.turnsThisSession++;
         }
         playTtsAudioIfReal(result);
-        statusLine.textContent = result.translated_text
-          ? `Translated: "${result.translated_text}"`
-          : 'Listening (real microphone)…';
+        if (result.translated_text) {
+          // Surface a TTS failure right on the status line instead of only
+          // console.warn — otherwise a misconfigured TTS provider (missing
+          // ELEVENLABS_API_KEY, invalid voice_id, etc.) looks identical to
+          // "still listening" from the user's side: translation is clearly
+          // working (the text is right there) but nothing gets spoken.
+          statusLine.textContent = result.tts_error
+            ? `Translated: "${result.translated_text}" (playback failed: ${result.tts_error})`
+            : `Translated: "${result.translated_text}"`;
+        } else {
+          statusLine.textContent = 'Listening (real microphone)…';
+        }
       };
       ws.onclose = () => {
         if (!AppState.intentionalClose) {

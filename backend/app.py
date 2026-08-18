@@ -478,7 +478,17 @@ def delete_account(authorization: str | None = Header(default=None),
 @app.post("/api/session")
 def create_session():
     session_id = str(uuid.uuid4())
-    sessions[session_id] = SessionManager()
+    try:
+        sessions[session_id] = SessionManager()
+    except RuntimeError as exc:
+        # SessionManager() constructs the translation + TTS agents
+        # immediately (agents/factory.py), which raises RuntimeError if a
+        # provider is set to a real vendor (e.g. VOXBUDDY_TTS_PROVIDER=
+        # elevenlabs) but its API key env var is missing. Without this,
+        # that error would surface as an opaque 500 with no indication of
+        # which provider/key is misconfigured — this makes it visible in
+        # the response instead of only in server logs.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"session_id": session_id}
 
 
@@ -527,7 +537,12 @@ def post_utterance(session_id: str, utt: UtteranceIn):
 async def websocket_session(websocket: WebSocket, session_id: str):
     await websocket.accept()
     if session_id not in sessions:
-        sessions[session_id] = SessionManager()
+        try:
+            sessions[session_id] = SessionManager()
+        except RuntimeError as exc:
+            await websocket.send_json({"error": str(exc)})
+            await websocket.close()
+            return
     session = sessions[session_id]
 
     try:
@@ -563,7 +578,12 @@ async def websocket_audio_session(websocket: WebSocket, session_id: str):
     """
     await websocket.accept()
     if session_id not in sessions:
-        sessions[session_id] = SessionManager()
+        try:
+            sessions[session_id] = SessionManager()
+        except RuntimeError as exc:
+            await websocket.send_json({"error": str(exc)})
+            await websocket.close()
+            return
     session = sessions[session_id]
 
     try:
@@ -606,6 +626,17 @@ async def websocket_audio_session(websocket: WebSocket, session_id: str):
                                  "ASSEMBLYAI_API_KEY for real transcription. "
                                  "Audio is streaming correctly otherwise.",
                     })
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    # Any other ASR-provider failure (e.g. a real vendor
+                    # SDK/connection error surfaced by
+                    # AssemblyAIStreamingASRAgent's background stream
+                    # thread — see asr_assemblyai.py). Without this, such
+                    # errors previously crashed this handler silently: the
+                    # socket would just close and the app would sit on
+                    # "Listening…" forever with nothing in the UI to say
+                    # why.
+                    await websocket.send_json({"error": f"ASR error: {exc}"})
                     break
     except WebSocketDisconnect:
         pass
