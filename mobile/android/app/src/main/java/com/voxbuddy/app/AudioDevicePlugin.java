@@ -68,4 +68,25 @@ public class AudioDevicePlugin extends Plugin {
         result.put("connected", false);
         call.resolve(result);
     }
+
+    /**
+     * Opens Android's own Bluetooth settings screen. This exists because
+     * getConnectedAudioDevice() above deliberately auto-picks whatever
+     * Classic Bluetooth audio device Android already has routed —
+     * correct for the common case, but it means the app itself has no
+     * way to let the user choose a *different* paired device or connect
+     * a new one: Android does not let apps force-switch which paired
+     * A2DP device is the active audio route, or drive Classic Bluetooth
+     * pairing UI, at all — only the system Bluetooth settings screen can
+     * do either. This gives the in-app "not this device?" escape hatch
+     * something real to do instead of pretending the app can arbitrate
+     * that itself.
+     */
+    @PluginMethod
+    public void openBluetoothSettings(PluginCall call) {
+        android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS);
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+        getContext().startActivity(intent);
+        call.resolve();
+    }
 }

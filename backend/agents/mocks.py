@@ -14,15 +14,48 @@ import time
 from .base import ASRResult, TranslationResult, TTSResult
 
 
-class MockSpeakerEmbeddingAgent:
-    """Deterministic pseudo-embedding derived from a speaker label, so the
-    PoC simulation can reliably represent 'the same voice' across turns
-    without real audio."""
+class LabelDerivedSpeakerIdentityAgent:
+    """Speaker identity derived directly from an ASR/diarization speaker
+    label, rather than a separate acoustic embedding model.
+
+    This is a deliberate implementation of the recommendation in
+    docs/vendor_decision.md §4: real streaming ASR vendors (AssemblyAI
+    included, via agents/asr_assemblyai.py) already return an inline
+    diarization label per turn at no extra cost — standing up a separate
+    x-vector/d-vector acoustic embedding model in v1 to re-derive
+    something the ASR vendor already gives you is redundant. So this
+    turns whatever label the upstream ASR agent supplies (real or mock)
+    into a stable pseudo-embedding: same label -> identical vector ->
+    the CIE's cosine-similarity speaker matcher (agents/engine.py's
+    _match_or_create_speaker) always resolves it to the same Speaker.
+
+    Honest limitation: this is genuinely NOT an acoustic voice-similarity
+    embedding — it can't recognize "the same physical voice" if the
+    upstream label for that voice changes (e.g. AssemblyAI relabeling a
+    speaker mid-session), and it can't merge two different labels the
+    upstream vendor mistakenly assigned to one real speaker. That's a
+    real acoustic-embedding model's job, still not built (tracked as an
+    open item in PROGRESS.md). What this class does guarantee: distinct
+    labels resolve to distinct speakers with very low collision risk —
+    the previous 8-dimensional version of this class (then named
+    MockSpeakerEmbeddingAgent) used only the first 8 bytes of the label's
+    SHA-256 hash, which left a non-negligible chance that two unrelated
+    labels' random 8-dim vectors would exceed the CIE's 0.80
+    cosine-similarity match threshold by pure chance and get incorrectly
+    merged into one Speaker. Using the full 32-byte digest instead cuts
+    that collision probability by many orders of magnitude, at zero
+    extra cost."""
 
     def embed(self, speaker_label: str) -> list[float]:
         h = hashlib.sha256(speaker_label.encode()).digest()
-        # 8-dim pseudo-embedding from hash bytes, normalized to [-1, 1]
-        return [(b / 127.5) - 1.0 for b in h[:8]]
+        # Full 32-dim pseudo-embedding from the whole hash, normalized to
+        # [-1, 1] — see the class docstring for why 32 dims instead of 8.
+        return [(b / 127.5) - 1.0 for b in h]
+
+
+# Backward-compatible alias — agents/factory.py and any external callers
+# that still import the old name keep working unchanged.
+MockSpeakerEmbeddingAgent = LabelDerivedSpeakerIdentityAgent
 
 
 class MockLanguageIDAgent:

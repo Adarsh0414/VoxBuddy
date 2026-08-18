@@ -636,6 +636,11 @@
   }
   .device-found-card .dev-name { font-size: 13.5px; font-weight: 600; }
   .device-found-card .dev-sub { font-size: 11.5px; color: var(--ink-faint); }
+  .device-change-link {
+    background: none; border: none; color: var(--partner); font-size: 12.5px;
+    font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
+    cursor: pointer; margin-top: 4px; padding: 6px 4px; font-family: inherit;
+  }
 
   /* ================= PICKER LISTS (language / TTS voice) ================= */
   .picker-search {
@@ -1880,7 +1885,7 @@
       try {
         const result = await window.Capacitor.Plugins.AudioDevice.getConnectedAudioDevice();
         if (result && result.connected) {
-          markEarbudsConnected(result.name || 'Bluetooth audio device');
+          markEarbudsConnected(result.name || 'Bluetooth audio device', true);
           return true;
         }
       } catch (err) {
@@ -1973,7 +1978,7 @@
       sub.textContent = deviceName;
       try {
         await window.Capacitor.Plugins.BluetoothLe.connect({ deviceId });
-        markEarbudsConnected(deviceName);
+        markEarbudsConnected(deviceName, false);
       } catch (err) {
         console.warn('BLE connect failed:', err);
         title.textContent = 'Connection failed';
@@ -1981,14 +1986,27 @@
       }
     }
 
-    function markEarbudsConnected(deviceName) {
+    function markEarbudsConnected(deviceName, autoDetected) {
       SetupState.earbudConnected = true;
       const wrap = document.getElementById('earbud-visual');
       wrap.classList.add('connected');
       wrap.innerHTML = `<svg class="icon" viewBox="0 0 24 24" style="width:30px;height:30px;color:var(--success)"><path d="M20 6 9 17l-5-5"/></svg>`;
       document.getElementById('earbud-status-title').textContent = 'Connected';
       document.getElementById('earbud-status-sub').textContent = deviceName ? `Connected to ${deviceName}.` : 'You\'re all set.';
-      document.getElementById('earbud-device-slot').innerHTML = '';
+      // autoDetected = this came from checkAlreadyConnectedAudioDevice()
+      // silently finding whatever Classic Bluetooth device Android
+      // already had routed, not from the user picking it in a scan list.
+      // Android doesn't let an app force-switch which paired device is
+      // active, or drive Classic Bluetooth pairing UI — only the system
+      // Bluetooth settings screen can do either — so "pick a different
+      // one" has to hand off there rather than pretend the app can do it
+      // itself.
+      const slot = document.getElementById('earbud-device-slot');
+      if (autoDetected && isNativePlatform() && window.Capacitor.Plugins.AudioDevice) {
+        slot.innerHTML = `<button type="button" class="device-change-link" onclick="window.Capacitor.Plugins.AudioDevice.openBluetoothSettings()">Not this device? Change in Bluetooth settings</button>`;
+      } else {
+        slot.innerHTML = '';
+      }
       const settingsVal = document.getElementById('settings-earbud-value');
       if (settingsVal) { settingsVal.textContent = deviceName || 'Connected'; settingsVal.style.color = 'var(--success)'; }
 
