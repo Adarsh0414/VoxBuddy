@@ -1,32 +1,162 @@
-# VoxBuddy — Phase 1 (single-folder, run locally in VS Code)
+<div align="center">
 
-This folder is the whole Phase 1 deliverable: backend (real CIE + mocked
-AI agents) and a browser frontend demo, served together by one FastAPI
-process. One command runs everything; the same layout is deployable as-is
-(e.g. to Render, same pattern as your other projects).
+# VoxBuddy
+
+**Real-time, hands-free speech translation for travelers — talk, and let your earbuds do the rest.**
+
+VoxBuddy listens through your Bluetooth earbuds, detects who you're actually talking to, translates the conversation live, and speaks the translation back into your ear — no phone screen, no typing, no manual language selection.
+
+</div>
+
+---
+
+## The problem
+
+Existing translation apps make you stop the conversation, pull out your phone, hold it up like a walkie-talkie, and hand it back and forth. That's slow, awkward, and breaks eye contact exactly when you need it most — asking for directions, haggling at a market, or just having a real conversation with someone who doesn't share your language.
+
+## What VoxBuddy does differently
+
+You start a conversation once, then put your phone away. VoxBuddy:
+
+1. **Listens continuously** through your connected earbuds (Bluetooth Classic or BLE)
+2. **Figures out who's actually talking to you** — not background noise, not a stranger walking past — using a real signal-fusion engine, not just "loudest voice wins"
+3. **Translates what they say in real time**, with rolling conversation context so translations stay coherent turn-to-turn, not isolated sentence-by-sentence guesses
+4. **Speaks the translation back into your earbuds**, in a voice you picked, so you never have to look at a screen mid-conversation
+
+---
+
+## The core differentiator: the Conversation Intelligence Engine (CIE)
+
+Most "live translate" demos work great in a silent room with one other speaker. Real conversations aren't like that — there's background noise, other people talking nearby, and the person you're talking to might pause, step away, or hand you off to someone else (a shopkeeper's colleague, a second family member joining in).
+
+The CIE (`backend/cie/`) is the part of VoxBuddy built specifically to handle that:
+
+- **Partner identification via signal fusion** — combines voice similarity, turn-taking fit, and semantic coherence rather than trusting any single signal alone
+- **Hysteresis** — won't flip who it thinks your "partner" is on one noisy read
+- **Bystander rejection** — a stranger's voice nearby doesn't hijack the conversation
+- **Multi-partner conversation groups** — supports up to two active partners at once (a couple, two colleagues), with fast-track/confirmation logic for replacing a member who's gone quiet
+- **Self-voice enrollment** — your own voice is registered once at session start and permanently excluded from partner candidacy, so you can never accidentally become "the partner" in your own conversation
+- **Incoherence recovery** — self-heals if the conversation state drifts, instead of getting permanently stuck
+
+This engine is fully unit-tested and is the one part of the system that is **not** behind a vendor API — it's original logic.
+
+---
+
+## Features
+
+**Real-time pipeline**
+- Live microphone capture → streaming ASR → context-aware translation → TTS playback, end to end
+- Adaptive voice-activity gating (skips forwarding silence/ambient noise, not full noise cancellation)
+- WebSocket auto-reconnect with exponential backoff — a dropped connection resumes the *same* conversation state instead of restarting
+
+**Authentication**
+- Passwordless OTP login via email or phone (hashed codes, single-use, rate-limited, auto-expiring)
+- Google Sign-In as an alternative, verified server-side against Google's own public keys
+- Bearer-token sessions, optionally backed by Redis for horizontal scaling (SQLite by default, zero setup)
+
+**Conversation history & stats**
+- Every conversation is persisted (SQLite) and scoped to the logged-in user
+- Real day-streak, per-language conversation counts, and total talk time — computed from actual history, not placeholder numbers
+
+**Mobile app**
+- Installable PWA (manifest + service worker, real home-screen icon, full-screen launch)
+- Native Android app (Capacitor) with a foreground service to keep listening alive when backgrounded, native Bluetooth audio device detection, and adaptive launcher icons
+- iOS project scaffolded (Xcode project generated; full native build requires macOS)
+
+**Vendor-agnostic pipeline**
+- Every AI stage (ASR, translation, TTS) sits behind a clean interface (`backend/agents/base.py`) with a working mock and a real vendor adapter, swappable purely via environment variables — no orchestration code changes needed to go from demo mode to production
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Python, FastAPI, WebSockets, SQLite |
+| Speech-to-text | [AssemblyAI](https://www.assemblyai.com/) streaming API |
+| Translation | [Anthropic Claude](https://www.anthropic.com/) or [Google Gemini](https://ai.google.dev/) (context-aware, either is a drop-in choice) |
+| Text-to-speech | [ElevenLabs](https://elevenlabs.io/) |
+| Auth | Custom OTP (SMTP or Brevo for email, Fast2SMS or Brevo for SMS) + Google Sign-In |
+| Session storage | SQLite (default) or Redis (optional, for scaling auth tokens) |
+| Frontend | Vanilla JS single-page app, PWA (manifest + service worker) |
+| Mobile shell | [Capacitor](https://capacitorjs.com/) — real Android Studio/Gradle project + Xcode project |
+| Deployment | [Render](https://render.com/) (`render.yaml` blueprint included) |
+| Testing | pytest — 180+ backend tests |
+
+---
+
+## Architecture
+
+```
+┌─────────────┐        WebSocket (audio)         ┌──────────────────────────┐
+│   Mobile /   │ ───────────────────────────────▶ │        FastAPI            │
+│  Web client  │                                   │                            │
+│  (earbuds    │ ◀─────────────────────────────── │  /ws/{session}/audio      │
+│   mic + TTS  │        translated audio           │        │                   │
+│   playback)  │                                   │        ▼                   │
+└─────────────┘                                   │  Streaming ASR Agent       │
+                                                    │  (AssemblyAI / mock)       │
+                                                    │        │ final transcript  │
+                                                    │        ▼                   │
+                                                    │  Conversation              │
+                                                    │  Intelligence Engine (CIE) │
+                                                    │  — partner? bystander?     │
+                                                    │        │ accepted turn     │
+                                                    │        ▼                   │
+                                                    │  Translation Agent         │
+                                                    │  (Claude / Gemini / mock)  │
+                                                    │        │ translated text   │
+                                                    │        ▼                   │
+                                                    │  TTS Agent                 │
+                                                    │  (ElevenLabs / mock)       │
+                                                    │        │ audio bytes       │
+                                                    │        ▼                   │
+                                                    │  SQLite persistence        │
+                                                    └──────────────────────────┘
+```
+
+Every stage in the middle column is a small interface (`agents/base.py`) with a real adapter and a zero-config mock, selected at runtime by environment variable — so the whole pipeline runs end-to-end with no API keys at all, or with real vendors once configured.
+
+---
+
+## Project structure
 
 ```
 voxbuddy/
-  backend/
-    app.py            <- FastAPI app: REST + WebSocket API, serves frontend/
-    cie/               <- the real Conversation Intelligence Engine
-    agents/            <- ASR/Translation/TTS/embedding interfaces + mocks
-    session/           <- per-session pipeline orchestration
-    tests/             <- CIE unit tests
-    requirements.txt
-  frontend/
-    index.html          <- CIE dev/testing dashboard
-    product-preview.html <- visual mockup of the REAL product screens (served at /preview)
-    style.css
-    script.js            <- WebSocket client + scripted market-stall scenario
-  docs/
-    VoxBuddy_PRD_and_Architecture.md   <- full Phase 1 PRD/architecture
-    vendor_decision.md                  <- Phase 2 AI vendor research
-  PROGRESS.md          <- what's done / what's left, check this first
-  .gitignore
+├── backend/
+│   ├── app.py                    FastAPI app — REST + WebSocket API
+│   ├── cie/                      Conversation Intelligence Engine (real, original logic)
+│   ├── agents/                   ASR / Translation / TTS interfaces, mocks, and real vendor adapters
+│   ├── session/                  Per-session pipeline orchestration + streaming bridge
+│   ├── auth_store.py             OTP auth, users, sessions
+│   ├── otp_providers.py          SMTP / Brevo / Fast2SMS OTP delivery
+│   ├── persistence.py            Conversation history (SQLite)
+│   ├── token_store.py            Session tokens (SQLite or Redis)
+│   └── tests/                    180+ pytest tests
+├── frontend/
+│   ├── app-preview.html          The real product UI — Login, Home, Conversation, History, Settings...
+│   ├── index.html                CIE developer/testing dashboard
+│   ├── manifest.json / sw.js     PWA install + service worker
+│   └── privacy.html, terms.html  Legal pages
+├── mobile/
+│   ├── android/                  Real Android Studio/Gradle project (Capacitor)
+│   │   └── .../AudioDevicePlugin.java, ConversationForegroundService.java   Native plugins
+│   └── ios/                      Xcode project (Capacitor) — build requires macOS
+├── docs/
+│   ├── VoxBuddy_PRD_and_Architecture.md
+│   ├── vendor_decision.md
+│   ├── MOBILE_BUILD.md
+│   ├── PLAY_STORE_PUBLISHING.md
+│   └── TESTING_REAL_PIPELINE.md
+├── render.yaml                   Render deployment blueprint
+└── PROGRESS.md                   Full build log — what's done, tested, and what's next
 ```
 
-## Run it (VS Code / terminal)
+---
+
+## Getting started (local development)
+
+### Backend
 
 ```bash
 cd backend
@@ -36,235 +166,71 @@ pip install -r requirements.txt
 uvicorn app:app --reload
 ```
 
-Open **http://127.0.0.1:8000/** — that's the whole demo, backend and
-frontend from one process.
+Open **http://127.0.0.1:8000/app** — this is the real product UI, served with zero configuration. Every AI stage runs in mock mode by default (no API keys needed) so the whole flow — login, conversation, history — works out of the box.
 
-Click **"Run market-stall scenario"** to watch the CIE handle three staged
-scenarios live: (1) partner established → bystander correctly ignored →
-partner resumes, (2) a **second legitimate voice joins the conversation**
-(e.g. the shopkeeper's spouse) while the first partner stays active — real
-group support, not a single-partner model — with a subsequent bystander
-correctly rejected once the group is full, and (3) a group member who's
-gone quiet gets **replaced**, either after two confirming turns (moderate
-confidence) or immediately (overwhelming confidence). Note: scenario 2/3
-require the ~8s partner-absence timeout to actually elapse in real time, so
-the button pauses partway through — that's intentional, see the comment in
-`script.js`.
+### Enabling real AI providers
 
-Or drive it by hand: type any utterance, set the sliders (these stand in
-for signals real audio agents would produce — turn-taking fit, semantic
-coherence), and send it. Same `speaker_label` = same "voice" across sends,
-so you can simulate a person leaving and returning.
+Copy `.env.example` to `.env` in `backend/` and fill in whichever vendors you want live:
 
-## Viewing this on your phone
+| Stage | Env vars | Notes |
+|---|---|---|
+| Translation | `VOXBUDDY_TRANSLATION_PROVIDER=anthropic\|gemini` + matching API key | Either vendor, pick one |
+| Speech-to-text | `VOXBUDDY_ASR_PROVIDER=assemblyai` + `ASSEMBLYAI_API_KEY` | Real mic transcription |
+| Text-to-speech | `VOXBUDDY_TTS_PROVIDER=elevenlabs` + `ELEVENLABS_API_KEY` | Also needs real voice IDs in `agents/tts_elevenlabs.py` |
+| OTP email | `VOXBUDDY_OTP_EMAIL_PROVIDER=smtp\|brevo` + credentials | Falls back to console-printed codes if unset |
+| OTP SMS | `VOXBUDDY_OTP_SMS_PROVIDER=fast2sms\|brevo` + credentials | Optional |
+| Google Sign-In | `GOOGLE_CLIENT_ID` (+ `GOOGLE_CLIENT_SECRET` for native) | Sign-in button hides itself if unset |
+| Redis sessions | `VOXBUDDY_SESSION_STORE=redis` + `REDIS_URL` | Optional; SQLite is the zero-config default |
 
-Three different pages now, three different purposes:
+Every one of these defaults to a working mock — nothing is required to run and explore the app.
 
-- **`http://<your-pc-ip>:8000/`** — the CIE dev/testing dashboard. Good for
-  checking the engine works, not what the real app looks like.
-- **`http://<your-pc-ip>:8000/app`** — **the real product direction, and
-  now genuinely wired to the backend, not just a static mockup.** Opens on
-  a real **Login screen** — email or phone, your choice, OTP-based (no
-  passwords). Zero-config by default: the code prints to the server
-  console and, in dev mode, autofills in the UI so you can test the whole
-  flow without a Brevo account (see "Real authentication" below). After
-  logging in: Home (start conversation, stats, recent activity), History
-  (searchable conversation list — now scoped to YOUR conversations only),
-  Transcript Detail, Profile (shows your real email/phone), Settings,
-  Setup, and the minimal Conversation-Active screen — glassmorphism
-  design, persistent bottom navigation. Tapping "Start Conversation" opens
-  a real WebSocket and runs a scripted exchange through the actual CIE.
-  Ending a call persists it under your account (SQLite,
-  `backend/persistence.py` + `backend/auth_store.py`) — History and stats
-  are real and per-user. Your session survives a page reload (token in
-  `localStorage`); sign out from Profile to test the login flow again.
-  Profile's avatar/name are real now; "day streak" and badges are still
-  flavor/mock.
-
-**Install it to your home screen** (real PWA now, not just a bookmark):
-on Android Chrome, open `/app` and tap the menu → "Install app" (or you'll
-see an install banner). On iOS Safari, tap Share → "Add to Home Screen".
-Either way you get a real VoxBuddy icon and it launches full-screen, no
-browser address bar — the closest this gets to feeling like a native app
-without actually being one (see `PROGRESS.md` for the honest line between
-the two).
-
-### Real authentication
-
-Email or phone, your choice — OTP, no passwords. Works with zero config:
+### Testing on your phone over WiFi
 
 ```bash
-uvicorn app:app --reload
+uvicorn app:app --host 0.0.0.0 --reload
 ```
 
-The OTP prints to your terminal by default. Set `VOXBUDDY_AUTH_DEV_MODE=1`
-(see `.env.example`) and the code also comes back in the API response, so
-the login screen autofills it for you — no need to read server logs while
-testing.
+Then open `http://<your-pc-local-ip>:8000/app` from your phone on the same network. Install it to your home screen (Chrome: menu → "Install app"; Safari: Share → "Add to Home Screen") for a full-screen, native-feeling launch.
 
-To send real emails/texts instead, get a [Brevo](https://www.brevo.com)
-account (one free API key covers both channels) and set in `.env`:
-```
-VOXBUDDY_OTP_PROVIDER=brevo
-VOXBUDDY_BREVO_API_KEY=...
-VOXBUDDY_BREVO_SENDER_EMAIL=you@yourdomain.com
-```
+### Native Android / iOS
 
-- **`http://<your-pc-ip>:8000/preview`** — the earlier, narrower 3-screen
-  sketch (Setup/Conversation/Transcript only). Superseded by `/app` — kept
-  for reference.
+`mobile/` is a real Capacitor project — an actual Android Studio/Gradle project and an actual Xcode project, both pointed at your deployed backend URL (`mobile/capacitor.config.ts`). See `docs/MOBILE_BUILD.md` for the full build guide. iOS specifically requires building on macOS with Xcode — there's no way around that platform requirement.
 
-To open any of these from your phone's browser over your home WiFi:
+### Deploying
 
-1. Start the server so it listens on your network, not just your PC:
-   ```bash
-   uvicorn app:app --host 0.0.0.0 --reload
-   ```
-2. Find your PC's local IP:
-   - Windows (PowerShell): `ipconfig` → look for "IPv4 Address" (something
-     like `192.168.1.42`)
-3. On your phone (same WiFi network), open `http://192.168.1.42:8000/app`
-   in any browser.
+`render.yaml` is a ready-to-use [Render](https://render.com/) blueprint — connect the repo, set your real vendor API keys in Render's dashboard (they're intentionally *not* committed to the blueprint), and it deploys as one FastAPI service serving both the API and the frontend.
 
-If it doesn't load, Windows Firewall is probably blocking the port —
-allow Python/uvicorn through the firewall for private networks, or
-temporarily allow port 8000.
+---
 
-## Tracking progress
-
-`PROGRESS.md` in the repo root is a checklist against the PRD's 5 phases —
-what's done and tested, what's built but unverified, what hasn't started.
-Check that first before asking "is X done yet."
-
-## Run the tests
+## Testing
 
 ```bash
 cd backend
 pytest tests/ -v
 ```
 
-## What's real vs. mocked
+180+ tests covering the CIE's partner-identification logic, streaming pipeline wiring, auth (OTP + Google Sign-In), persistence, TTS/ASR error handling, and session token storage.
 
-The **CIE** (`backend/cie/`) is real, tested logic — partner identification
-fusion, hysteresis, bystander rejection, **multi-partner conversation
-groups** (up to 2 concurrent partners in v1 — a couple at a market stall,
-two colleagues in a meeting), member-replacement with fast-track/
-confirmation hysteresis, and incoherence recovery.
+---
 
-The **streaming pipeline architecture** (`backend/session/streaming_manager.py`)
-is also real — it bridges event-callback-based ASR (partial results, then a
-final result per turn — how real vendors actually work, not the simpler
-request/response shape the batch demo uses) into the same CIE + Translation
-+ TTS pipeline. Both the mock (`agents/mock_streaming_asr.py`) and the real
-AssemblyAI scaffold (`agents/asr_assemblyai.py`) implement the identical
-protocol, so this is a tested integration point, not just a stub.
+## What's real vs. what's a mock
 
-**ASR/Translation/TTS/speaker-embedding vendor calls are mocked** behind
-vendor-agnostic interfaces (`backend/agents/base.py`) so real providers can
-be dropped in during Phase 2 without touching orchestration code — with
-translation already having one real, working implementation (see below).
+Every AI vendor integration (ASR, translation, TTS, OTP delivery) is written as a real, complete adapter against that vendor's documented API — not a stub. Each one also ships with a working mock so the app runs fully offline with zero API keys for development and demos. See `PROGRESS.md` for the full, honestly-tracked breakdown of what's been live-tested against real vendor traffic versus what's built-and-correct-but-unverified.
 
-Also real: **self-voice enrollment** (`cie.enroll_self()` /
-`session.enroll_self()` / `POST /api/session/{id}/enroll_self`) — the user's
-own voice is registered once at session start and permanently excluded from
-partner candidacy, fixing a real bug where the user's own speech could
-consume a conversation-group slot. `simulate.py` demonstrates it directly.
+---
 
-## Phase 2: real translation (optional)
+## Roadmap
 
-Translation now has a real, tested provider — Claude, called with rolling
-conversation context so it actually satisfies FR-6 (context-aware
-translation), not just isolated-sentence MT. See `docs/vendor_decision.md`
-for the full vendor research (ASR, translation, TTS, diarization) behind
-this choice.
+- [ ] Real-hardware Bluetooth pairing verification (code is written against `@capacitor-community/bluetooth-le`, untested on physical BLE hardware)
+- [ ] Full offline degraded mode
+- [ ] Speaker diarization / embeddings with a real vendor (currently mocked)
+- [ ] Google Play Store publishing (guide ready in `docs/PLAY_STORE_PUBLISHING.md`)
 
-To turn it on:
+---
 
-```bash
-cp .env.example .env
-# edit .env:
-#   VOXBUDDY_TRANSLATION_PROVIDER=anthropic
-#   ANTHROPIC_API_KEY=sk-ant-...
-```
+## Author
 
-Restart `uvicorn app:app --reload` and the demo now calls real Claude for
-translation. Leave `.env` absent or `VOXBUDDY_TRANSLATION_PROVIDER=mock` to
-keep everything offline/free, which is still the default.
+Built by **Adarsh Kumar Singh** — B.Tech CSE, VIT Bhopal.
 
-ASR (`backend/agents/asr_assemblyai.py`) and TTS
-(`backend/agents/tts_elevenlabs.py`) are scaffolded against real vendor
-SDKs but **not yet live-tested** (no credentials in this build
-environment). The streaming *interface* gap flagged earlier — the old ASR
-protocol was request/response, but real vendors work via event callback —
-is closed: `agents/base.py`'s `StreamingASRAgent` protocol, a working mock
-(`agents/mock_streaming_asr.py`), and the bridge into the existing
-pipeline (`session/streaming_manager.py`) are all implemented and covered
-by 7 tests. `agents/asr_assemblyai.py` now conforms to that exact protocol
-— swapping the mock for the real adapter should require no changes
-downstream, once there's a real API key to verify it against.
-
-## Native Android + iOS (real project scaffolds, not built here)
-
-`mobile/` — a real Capacitor project, generated with Capacitor's own
-official CLI: an actual Android Studio/Gradle project and an actual Xcode
-project, both with full icon/splash assets already generated for every
-required size on both platforms. This sandbox is Linux with no Android
-SDK and no macOS, so the actual builds couldn't complete here — confirmed
-live (Gradle itself couldn't even download; iOS fundamentally requires a
-Mac, an Apple platform rule with no workaround). Full honest guide,
-exactly what to do on your own machine for each platform:
-`docs/MOBILE_BUILD.md`.
-
-## Publishing to Google Play
-
-Short version: **yes, possible, via Trusted Web Activity** (Google's
-official PWA-to-Android-app path) — **Apple App Store is not possible**
-for a PWA, they reject "repackaged websites" outright. Full step-by-step
-guide, written honestly for exactly where this project stands right now:
-`docs/PLAY_STORE_PUBLISHING.md`. A real privacy policy page is already
-built (`/privacy` — edit the placeholder contact email before publishing).
-
-## Resilience: reconnection + Redis-backed sessions
-
-Two Phase 3/4 items, both real and live-tested, not just written:
-
-**WebSocket reconnection.** If the connection drops unexpectedly mid
--conversation (network blip, backend restart), the app auto-reconnects
-with exponential backoff and resumes the *same* CIE state — the
-previously-established partner is still recognized afterward, not
-re-detected from scratch. A deliberate "End Call" does not trigger this.
-Verified by forcing a live drop mid-conversation and confirming both the
-reconnect and the state preservation.
-
-**Redis-backed auth tokens** (optional — sqlite is the zero-config
-default). Scoped honestly: this covers bearer session tokens, not live
-conversation state — see `backend/token_store.py`'s architectural note for
-why those are different problems (a live conversation is bound to one open
-WebSocket on one process; the correct production fix for scaling *that* is
-sticky sessions at a load balancer, not Redis). To turn it on:
-```
-VOXBUDDY_SESSION_STORE=redis
-VOXBUDDY_REDIS_URL=redis://localhost:6379/0
-```
-Requires a running Redis (`redis-server`, or any managed Redis in
-production). Verified live: requested a token with this enabled, confirmed
-via `redis-cli` that it physically exists as a Redis key (not in
-`voxbuddy.db`), and confirmed `/api/auth/me` resolves it correctly.
-
-## Publishing / next steps
-
-- This is a single deployable service (FastAPI serving its own static
-  frontend), so it can go straight onto Render the same way CampusVibe/
-  CallBeacon are hosted — `uvicorn app:app --host 0.0.0.0 --port $PORT`
-  (set `VOXBUDDY_TRANSLATION_PROVIDER`/`ANTHROPIC_API_KEY` as Render env vars
-  if using real translation, plus the auth/Redis vars above as needed).
-- What's left genuinely needs resources this build environment doesn't
-  have: live-testing real streaming ASR (AssemblyAI), TTS (ElevenLabs), and
-  OTP delivery (Brevo) all need real vendor credentials; a real native
-  mobile app needs an actual Android/iOS toolchain and device to test on,
-  neither of which exist here. Everything in this repo that COULD be
-  built and verified without those has been — see `PROGRESS.md` for the
-  full honest breakdown of what's real vs. what's still mock or scaffolded.
-- See `docs/VoxBuddy_PRD_and_Architecture.md` for the full product/system
-  design this implements against, and `docs/vendor_decision.md` for the
-  Phase 2 AI vendor research and rationale.
+- GitHub: [@Adarsh0414](https://github.com/Adarsh0414)
+- Repo: [github.com/Adarsh0414/VoxBuddy](https://github.com/Adarsh0414/VoxBuddy)

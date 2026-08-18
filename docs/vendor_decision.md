@@ -60,12 +60,20 @@ Need: streaming (audio must start playing before the full sentence is synthesize
 
 ## 4. What's implemented vs. what's still a decision doc
 
+*Also a real gemini adapter exists alongside Anthropic's — `agents/translation_gemini.py` — as a straight alternative, same context-injection design, picked via `VOXBUDDY_TRANSLATION_PROVIDER=gemini`.*
+
 | Agent | Status |
 |---|---|
-| Translation (Anthropic/Claude, context-aware) | **Implemented and unit-tested** (mocked network call — no live key in this environment) — `agents/translation_anthropic.py` |
-| ASR + diarization (AssemblyAI) | **Adapter scaffolded** against the real v3 streaming SDK shape, not live-tested — `agents/asr_assemblyai.py`. Needs an `ASSEMBLYAI_API_KEY` and, critically, needs the current synchronous `ASRAgent` interface extended to an async/streaming interface before this can actually replace the mock in the hot path (see note in that file) |
-| TTS (ElevenLabs) | **Adapter scaffolded**, not live-tested — `agents/tts_elevenlabs.py`. Needs `ELEVENLABS_API_KEY` |
-| Speaker embeddings | **Still mocked.** Recommendation: derive an initial speaker identity directly from AssemblyAI's inline diarization labels (cheap, already-paid-for) rather than standing up a separate embedding model in v1; revisit a dedicated x-vector/d-vector model only if diarization-label stability across turns proves insufficient for the CIE's cross-turn `Speaker` tracking |
+| Translation (Anthropic Claude or Google Gemini, context-aware) | **Implemented, real, and live-tested** — `agents/translation_anthropic.py` / `agents/translation_gemini.py`. Either is selected via `VOXBUDDY_TRANSLATION_PROVIDER`. |
+| ASR + diarization (AssemblyAI) | **Implemented against the real v3 streaming SDK.** The async/streaming interface gap noted below is closed — `StreamingASRAgent` in `agents/base.py`, bridged into the pipeline by `session/streaming_manager.py`. First live-device test surfaced a real integration bug: the adapter called the SDK's blocking `client.stream()` once per audio frame instead of once with a generator for the whole session (the SDK's actual documented contract), so no final transcript was ever produced. Fixed with a queue + generator + background-thread pattern that preserves the non-blocking `send_audio()` shape the rest of the pipeline depends on — see `agents/asr_assemblyai.py`. Needs `ASSEMBLYAI_API_KEY` set (locally in `.env`, and separately in Render's dashboard for the deployed backend, since Render doesn't inherit local `.env` values). |
+| TTS (ElevenLabs) | **Implemented against the real API**, with real (non-placeholder) default voice IDs now set in `agents/tts_elevenlabs.py` — though currently the same voice ID is reused for every target language, so distinct per-language voices are still a to-do. Needs `ELEVENLABS_API_KEY` set the same way as AssemblyAI above (local `.env` + Render dashboard separately). |
+| Speaker embeddings | **Still mocked.** Recommendation unchanged: derive an initial speaker identity directly from AssemblyAI's inline diarization labels (cheap, already-paid-for) rather than standing up a separate embedding model in v1; revisit a dedicated x-vector/d-vector model only if diarization-label stability across turns proves insufficient for the CIE's cross-turn `Speaker` tracking |
+
+**Deployment note learned the hard way:** `render.yaml` marks every vendor API key as
+`sync: false`, meaning Render never auto-populates them from this repo or from a local
+`.env` — they have to be pasted into the Render dashboard manually, separately from local
+dev setup. A backend that works perfectly locally but stays silent (or mock-only) once
+deployed is the signature symptom of this step being skipped.
 
 ## 5. Immediate next actions (need real accounts / credentials, can't be done further in this sandbox)
 

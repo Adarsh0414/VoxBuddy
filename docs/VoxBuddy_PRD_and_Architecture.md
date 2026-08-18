@@ -3,7 +3,8 @@
 *"Voice to Voice, Heart to Heart, Bringing Worlds Together."*
 
 Owner: Founding Engineering (this document)
-Status: Draft for Phase 1
+Status: Living spec — Phases 1–4 substantially implemented; see `PROGRESS.md` for the up-to-date,
+honestly-tracked status of every item below (what's real, tested, mocked, or not started).
 Scope: End-to-end product, AI, and infrastructure specification for a production-ready v1
 
 ---
@@ -347,6 +348,14 @@ Default posture: **Turn-level text/audio is NOT retained** unless the user opts 
 
 Each phase ends in a working, demoable system. No phase blocks on "everything" — each is a vertical slice.
 
+**Current status (see `PROGRESS.md` for the full item-by-item log):** Phases 1–3 are
+substantially built and tested, including items originally scoped for later phases
+(real auth, Google Sign-In, native Android app with a foreground service and Bluetooth
+device detection, PWA installability, WebSocket reconnection). Phase 4's Redis-backed
+session storage is also implemented. What remains genuinely open: live-testing the real
+ASR/TTS vendor integrations against real hardware end-to-end, real-hardware Bluetooth
+pairing verification, and Phase 5 in full.
+
 **Phase 1 — Foundation (this doc + next steps)**
 - This PRD/architecture (done)
 - Thin-slice proof of concept: two-phone, quiet-room, symmetric-mode conversation using off-the-shelf ASR/MT/TTS APIs and a *simplified* CIE (single fixed partner, no bystander handling yet) — proves the core loop and measures baseline latency.
@@ -379,7 +388,7 @@ Each phase ends in a working, demoable system. No phase blocks on "everything" �
 2. Where the on-device vs. cloud line should sit for denoising/diarization as edge hardware capability improves (battery/latency/privacy tradeoff).
 3. Voice-matched TTS (translated speech in the *user's own* vocal timbre) — desirable, but consent/deepfake-risk implications need explicit product review before building.
 4. Beamforming reliance for phone-mic asymmetric mode — device fragmentation across Android OEMs makes this inconsistent; needs a robustness fallback strategy.
-5. Whether the v1.1 partner-group cap of 2 is right, or whether real usage (a family ordering together, a meeting table) needs a larger or dynamic cap — and whether self-voice enrollment (excluding the user's own voice from ever being evaluated as a partner candidate, currently unimplemented — see the Phase 1 codebase's known-simplifications notes) needs to ship before group support is safe to rely on, since without it the user's own speech can consume a group slot.
+5. Whether the v1.1 partner-group cap of 2 is right, or whether real usage (a family ordering together, a meeting table) needs a larger or dynamic cap. (Self-voice enrollment — excluding the user's own voice from ever being evaluated as a partner candidate — was flagged here as a prerequisite and has since shipped: `cie.enroll_self()` / `POST /api/session/{id}/enroll_self`, tested in `tests/test_cie.py`.)
 
 ---
 

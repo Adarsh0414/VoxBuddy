@@ -41,12 +41,15 @@ From your own machine, with the real URL:
 
 You now have two options — use whichever fits:
 
-**Option A (recommended if you also want iOS):** use the real Android
-Studio project already scaffolded at `mobile/android` — see
-`docs/MOBILE_BUILD.md`. Open it in Android Studio, let Gradle sync, then
-Build → Generate Signed Bundle/APK. This is the same codebase that also
-covers iOS via `mobile/ios`, so if you want both stores from one setup,
-start here.
+**Option A (recommended, and the one already in use):** the real Android
+Studio project at `mobile/android` — see `docs/MOBILE_BUILD.md`. This is
+no longer just scaffolding: it's a built, installed, real-device-tested
+app with native plugins (background foreground service so mic capture
+survives being backgrounded, Bluetooth audio device detection). Open it
+in Android Studio, let Gradle sync, then Build → Generate Signed
+Bundle/APK. The same codebase also covers iOS via `mobile/ios` (not yet
+built — needs a Mac), so if you want both stores from one setup, start
+here.
 
 **Option B (Android-only, lighter-weight, ~200KB app):** wrap the PWA
 directly with Bubblewrap instead — produces a smaller app since it's just

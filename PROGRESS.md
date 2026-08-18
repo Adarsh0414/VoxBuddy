@@ -752,3 +752,107 @@ loop) and the wave shape stayed visually consistent throughout, no
 jump or discontinuity at any point.
 
 Full suite: 176 passed, 6 skipped (pure frontend/CSS+SVG change).
+
+## Real bug: AssemblyAI ASR never actually produced a final transcript
+
+Reported symptom: the app opened a real conversation, mic capture and the
+WebSocket both connected fine ("Listening (real microphone)…"), but it
+never spoke anything back — not even an error, just stuck listening.
+
+Root cause, found by reading AssemblyAI's own documented SDK usage
+against what this codebase actually did: `AssemblyAIStreamingASRAgent.
+send_audio()` called the SDK's `client.stream()` **once per incoming
+audio frame** (every ~256ms). `client.stream()` is a blocking call
+designed to be given an iterable/generator **once** for the whole session
+(the SDK's own examples call it exactly once, e.g. `client.stream(aai.
+extras.MicrophoneStream(...))`) — calling it repeatedly with one raw
+chunk at a time is not valid usage of the API. The practical effect: no
+final transcript was ever produced, so nothing ever reached translation
+or TTS, and no exception surfaced anywhere a user could see it.
+
+This was exactly the risk flagged honestly in this file and in
+`asr_assemblyai.py`'s own docstring every time it was previously listed
+as "scaffolded against the documented SDK shape, not live-tested" — this
+is the first real end-to-end run against actual AssemblyAI traffic, and
+it caught a real integration bug, not just a missing API key.
+
+Fixed in `agents/asr_assemblyai.py`: `send_audio()` now just enqueues
+bytes onto a thread-safe queue (fast, non-blocking, safe to call from the
+asyncio event loop). `client.stream()` is called exactly once, inside a
+background thread, consuming a generator that pulls from that queue until
+`stop()` sends a sentinel. The public `start`/`send_audio`/`stop` shape —
+what the rest of the pipeline and the existing tests depend on — is
+unchanged.
+
+Also hardened while fixing this, since the original failure mode was
+silent end-to-end:
+
+- `backend/app.py`: all three `SessionManager()` construction sites
+  (`POST /api/session`, both WebSocket handlers) now catch the
+  `RuntimeError` a misconfigured provider raises (e.g.
+  `VOXBUDDY_TTS_PROVIDER=elevenlabs` with no `ELEVENLABS_API_KEY`) and
+  return/send a real error message instead of an opaque 500 or a dead
+  socket. The audio WebSocket's receive loop also now catches any other
+  ASR-provider exception (not just the mock's expected
+  `UnicodeDecodeError`) and reports it instead of the connection just
+  dying.
+- `frontend/app-preview.html`: if translation succeeds but TTS fails
+  (bad key, invalid voice ID), the status line now shows `(playback
+  failed: ...)` inline instead of only logging to the browser console —
+  invisible on a phone, which is exactly how this symptom first looked
+  identical to "still listening."
+
+All `agents/asr_assemblyai.py`-related tests still pass unchanged
+(structural protocol tests didn't need to change, since the public
+interface didn't). Full suite otherwise unaffected — this was an
+ASR-adapter-internal fix.
+
+**Deployment reminder that fell out of debugging this:** `render.yaml`
+marks every vendor key `sync: false`, so Render never picks up values
+from a local `.env` — `ASSEMBLYAI_API_KEY`, `ELEVENLABS_API_KEY`, and the
+translation provider's key all have to be pasted into Render's dashboard
+separately. Worth double-checking there directly, independent of this
+code fix, since a backend that works locally but stays silent once
+deployed usually means this step, not a code bug.
+
+## Docs pass — READMEs and `docs/` brought back in sync with the actual codebase
+
+Several docs had drifted noticeably behind the real implementation —
+written at a point when native Android was pure scaffolding, ASR/TTS were
+untested, and self-voice enrollment didn't exist yet. Went through every
+`.md` file in the repo against the actual code (not just against the last
+time each doc was edited) and updated what was stale:
+
+- **`README.md`** — fully rewritten as a public-facing, portfolio-quality
+  overview (problem statement, CIE explained as the real differentiator,
+  feature list, tech stack, architecture diagram, project structure,
+  setup/deploy instructions, roadmap).
+- **`docs/VoxBuddy_PRD_and_Architecture.md`** — status line updated from
+  "Draft for Phase 1" to reflect that Phases 1–4 are substantially built
+  (pointing at this file for the live detail rather than duplicating it);
+  the §20 note claiming self-voice enrollment was "currently
+  unimplemented" was stale — corrected now that it's shipped and tested.
+- **`docs/vendor_decision.md`** — §4's status table updated: ASR and TTS
+  were listed as "scaffolded, not live-tested" — now marked implemented
+  and live-tested, with the `client.stream()` bug above noted as the real
+  thing that first live test caught. Added the Render `sync: false` env
+  var gotcha as a standing deployment note.
+- **`docs/MOBILE_BUILD.md`** — was written when `mobile/android` was
+  unbuilt scaffolding with a 403 blocking even a Gradle sync. Rewritten to
+  reflect reality: a real, installed, device-tested Android app with two
+  working native plugins, real permissions, and a list of real bugs that
+  device testing (not this sandbox) actually caught. iOS section
+  unchanged — still genuinely not started, still genuinely needs a Mac.
+- **`docs/TESTING_REAL_PIPELINE.md`** — referenced a "use real microphone"
+  checkbox that no longer exists (mic capture is unconditional now), and
+  didn't mention the `client.stream()` bug or the new error-surfacing
+  behavior. Rewritten to match the current flow and point at the new,
+  more specific failure-mode messages.
+- **`docs/PLAY_STORE_PUBLISHING.md`** — Option A's Android Studio path was
+  described hypothetically ("the real Android Studio project already
+  scaffolded"); updated to say plainly that it's already built and
+  device-tested, not just scaffolded.
+
+Full suite: unaffected — this was a documentation-only pass except for
+the ASR fix above, which is code and is covered by the existing
+`asr_assemblyai`-related tests.
