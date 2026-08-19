@@ -20,6 +20,7 @@ def client(tmp_path, monkeypatch):
     import app as app_module
     monkeypatch.setattr(app_module.persistence, "DB_PATH", test_db)
 
+    app_module.reset_otp_rate_limit()
     return TestClient(app_module.app)
 
 

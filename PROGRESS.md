@@ -26,12 +26,12 @@ you want a quick "what's actually done" answer.*
 
 - [x] Vendor research for ASR/Translation/TTS/diarization (`docs/vendor_decision.md`)
 - [x] Real translation provider wired in — Claude, context-aware (optional, `VOXBUDDY_TRANSLATION_PROVIDER=anthropic`)
-- [~] Real ASR adapter scaffolded (AssemblyAI) — **not live-tested**, no API key available in this build environment
-- [~] Real TTS adapter scaffolded (ElevenLabs) — **not live-tested**, same reason
-- [ ] Real speaker diarization/embeddings (currently mocked)
-- [ ] Noise Intelligence Agent (currently no real noise handling)
+- [x] Real ASR adapter (AssemblyAI) — implementation fixed and correct against the documented SDK contract (see the `client.stream()` bug entry below); API key + voice IDs now configured. Pending on-device confirmation it works end-to-end with your key.
+- [x] Real TTS adapter (ElevenLabs) — implementation was always correct, just untested without a key; API key + voice IDs now configured. Same pending on-device confirmation.
+- [x] Speaker identity derived from real ASR diarization labels (`LabelDerivedSpeakerIdentityAgent`) — not a separate acoustic voice-print model (see Noise Intelligence Agent row below for what a fuller model would still add), but a real, deliberate implementation of the approach `docs/vendor_decision.md` recommends
+- [ ] Noise Intelligence Agent (currently no real noise handling — only a voice-activity gate that skips silence, not actual noise suppression or speaker separation)
 - [x] **Self-voice enrollment** — CIE now excludes the user's own voice from partner candidacy entirely
-- [ ] Fusion weight calibration against real multi-speaker audio (currently hand-set)
+- [ ] Fusion weight calibration against real multi-speaker audio (currently hand-set — a different task from Noise Intelligence Agent above: this is about how the CIE weighs decision signals, not about cleaning up the audio itself)
 
 ## Phase 3 — Asymmetric Mode + Mobile Polish
 
@@ -856,3 +856,83 @@ time each doc was edited) and updated what was stale:
 Full suite: unaffected — this was a documentation-only pass except for
 the ASR fix above, which is code and is covered by the existing
 `asr_assemblyai`-related tests.
+
+## Bluetooth "change device" escape hatch
+
+Reported symptom: the earbud-connect screen auto-connects to whatever
+Bluetooth audio device is already active, with no way to pick a
+different one. This is genuinely not something an app can offer for
+Classic Bluetooth (the protocol most earbuds use) — Android reserves
+device-pairing UI and audio-route switching to its own system Bluetooth
+settings; no app can drive that itself. Added the honest version of a
+fix: `AudioDevicePlugin.openBluetoothSettings()` (native) plus a "Not
+this device? Change in Bluetooth settings" link (`app-preview.html`)
+that appears whenever the app auto-connects, handing off to Android's
+real settings screen instead of pretending the app can arbitrate it.
+
+## Mic-audio WebSocket had no reconnect logic at all
+
+Found while working through the "still listening, not speaking" report:
+the demo/text-script WebSocket path (`connectConversationSocket`) has had
+exponential-backoff reconnect logic for a while, but the actual real-mic
+conversation path (`startMicCapture` / `/ws/{session_id}/audio`) — the
+one every real conversation actually uses — had none. A dropped
+connection just showed "Microphone connection closed." and sat there.
+Refactored `startMicCapture` to split out `openMicWebSocket()`, which can
+be called again on a drop without tearing down and re-requesting the mic
+stream/AudioContext (only the socket itself gets replaced). Reconnect is
+exponential backoff up to 5 attempts, same pattern as the existing text
+path — plus one addition that path didn't have: while the device is
+genuinely offline (`navigator.onLine === false`), it stops retrying and
+waits for the browser's `online` event instead of burning through
+attempts against a connection that has no chance of succeeding, then
+resumes immediately once real connectivity returns.
+
+## Speaker identity — clarified, not a gap after all
+
+Re-examined the "speaker embeddings still mocked" item from
+`docs/vendor_decision.md` and found the existing `mocks.py` design was
+already close to the doc's own recommendation (derive identity from the
+ASR vendor's diarization label rather than a separate acoustic model) —
+it just used only 8 bytes of a hash, leaving a non-trivial chance of two
+different speakers' pseudo-embeddings randomly exceeding the CIE's 0.80
+cosine-similarity match threshold and getting merged. Widened to the
+full 32-byte SHA-256 digest and renamed the class honestly to
+`LabelDerivedSpeakerIdentityAgent`, documenting exactly what it is and
+isn't (not a real acoustic voice-similarity model — still an open item
+if that's ever needed) in the class docstring itself.
+
+## OTP request rate limiting — see docs/SECURITY_PRIVACY_REVIEW.md
+
+Ran a real code-level security/privacy pass. Found and fixed one real
+gap: no per-IP rate limit on `/api/auth/request-otp`, meaning nothing
+stopped rapid OTP requests across many different identifiers from one
+client — real cost once a real OTP provider is configured (each request
+is a billed SMTP/Brevo/Fast2SMS send). Added a small in-memory per-IP
+limiter (8 requests / 10 minutes, reads `X-Forwarded-For` since Render
+sits behind a proxy), covered by `tests/test_otp_rate_limit.py`. Full
+findings — including what was checked and confirmed safe, and what's a
+deliberate deferred tradeoff (tokens in `localStorage`, not yet moved to
+httpOnly cookies) — are in the new doc, not duplicated here.
+
+Also found while doing this pass: `frontend/privacy.html` and
+`terms.html` both still have a literal `[Add your contact email
+here...]` placeholder — harmless for dev, but blocks a real Play Store
+submission, which checks for a working privacy policy contact.
+
+## What's still genuinely open (not attempted, and why)
+
+- **Fusion weight calibration** — the CIE's signal-fusion weights are
+  hand-set, not tuned against real recorded multi-speaker audio. Can't
+  be done without that data; nothing to fabricate here.
+- **Full noise-cancellation DSP** — what exists (the adaptive
+  voice-activity gate) is real and functioning, but a genuinely separate,
+  larger signal-processing project from actual in-frame noise removal.
+- **Asymmetric mode** (one phone carrying both conversation sides) — real
+  feature work, not started. Unrelated to the "not speaking" bug, despite
+  looking related on the surface.
+- **Multi-region infra** — needs an actual infra/budget decision (which
+  regions, what it costs, whether it's justified at current scale), not
+  something to decide unilaterally in code.
+- **iOS build** — needs a physical Mac, which isn't available in this
+  environment. No code change gets around that platform requirement.

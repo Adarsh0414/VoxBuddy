@@ -2863,13 +2863,11 @@
       }
 
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(`${protocol}://${location.host}/ws/${sessionId}/audio`);
-      ws.binaryType = 'arraybuffer';
-      AppState.micWs = ws;
       // Fresh adaptive noise-gate state per call — see makeNoiseGateState()
       // and shouldForwardFrame() below for what this actually does.
       AppState.noiseGate = makeNoiseGateState();
       AppState.micStream = stream;
+      AppState.micReconnectAttempts = 0;
 
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       AppState.micAudioCtx = audioCtx;
@@ -2886,11 +2884,16 @@
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0);
         updateConvoWaveformLive(frameRMS(input)); // visualize every frame, even gated-out ones — you should see the meter respond the instant you make sound, not only once it clears the noise gate
-        if (ws.readyState !== WebSocket.OPEN) return;
+        // Reads AppState.micWs fresh on every frame (rather than closing
+        // over a fixed `ws` reference) so this keeps working across a
+        // reconnect below, which swaps in a brand new WebSocket object
+        // without tearing down the mic stream/AudioContext.
+        const currentWs = AppState.micWs;
+        if (!currentWs || currentWs.readyState !== WebSocket.OPEN) return;
         if (!shouldForwardFrame(input, AppState.noiseGate)) return;
         const downsampled = downsampleBuffer(input, audioCtx.sampleRate, TARGET_SAMPLE_RATE);
         const pcm16 = floatTo16BitPCM(downsampled);
-        ws.send(pcm16);
+        currentWs.send(pcm16);
       };
 
       sourceNode.connect(processor);
@@ -2899,7 +2902,32 @@
       // audio back — a silent/no-op requirement of the (deprecated) API.
       processor.connect(audioCtx.destination);
 
+      openMicWebSocket(sessionId);
+    }
+
+    // ---- Mic audio WebSocket, with real reconnect on drop -------------
+    // Split out from startMicCapture() so a dropped connection (network
+    // blip, backend restart) can open a fresh WebSocket WITHOUT tearing
+    // down and re-requesting the mic stream/AudioContext — those stay
+    // alive across a reconnect, only the socket itself gets replaced.
+    // Mirrors connectConversationSocket()'s exponential-backoff pattern,
+    // plus one addition that path didn't have: while the device is
+    // actually offline (navigator.onLine === false), this stops retrying
+    // and waits for the browser's 'online' event instead of burning
+    // through MAX_RECONNECT_ATTEMPTS against a connection that has no
+    // chance of succeeding — then resumes immediately once real
+    // connectivity is back.
+    const MAX_MIC_RECONNECT_ATTEMPTS = 5;
+
+    function openMicWebSocket(sessionId) {
+      const statusLine = document.getElementById('convo-status-line');
+      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${protocol}://${location.host}/ws/${sessionId}/audio`);
+      ws.binaryType = 'arraybuffer';
+      AppState.micWs = ws;
+
       ws.onopen = () => {
+        AppState.micReconnectAttempts = 0;
         statusLine.textContent = 'Listening (real microphone)…';
       };
       ws.onmessage = (event) => {
@@ -2929,9 +2957,32 @@
         }
       };
       ws.onclose = () => {
-        if (!AppState.intentionalClose) {
-          statusLine.textContent = 'Microphone connection closed.';
+        if (AppState.intentionalClose) return;
+        // Mic stream/AudioContext may have been torn down already if the
+        // user backed out to Home — don't reconnect into nothing.
+        if (!AppState.micStream || !document.getElementById('screen-convo').classList.contains('active')) return;
+
+        if (!navigator.onLine) {
+          AppState.micWs = null; // lets updateOnlineStatus()'s check below know a reconnect is pending
+          statusLine.textContent = "You're offline — will reconnect automatically once you're back.";
+          return; // the 'online' listener below (registered once, near
+                   // updateOnlineStatus()) calls openMicWebSocket() again
+                   // as soon as connectivity actually returns.
         }
+
+        if (AppState.micReconnectAttempts >= MAX_MIC_RECONNECT_ATTEMPTS) {
+          statusLine.textContent = 'Connection lost. Tap End and Start Conversation again.';
+          return;
+        }
+
+        AppState.micReconnectAttempts++;
+        statusLine.textContent = 'Reconnecting…';
+        const delay = Math.min(1000 * 2 ** AppState.micReconnectAttempts, 8000);
+        setTimeout(() => {
+          if (AppState.micStream && document.getElementById('screen-convo').classList.contains('active')) {
+            openMicWebSocket(sessionId);
+          }
+        }, delay);
       };
     }
 
@@ -3151,6 +3202,16 @@
       const banner = document.getElementById('offline-banner');
       if (!banner) return;
       banner.classList.toggle('show', !navigator.onLine);
+      // If a mic-audio WebSocket reconnect was paused waiting for real
+      // connectivity (see openMicWebSocket()'s onclose handler above),
+      // this is what actually resumes it — otherwise the user would sit
+      // on "will reconnect automatically" until they manually left and
+      // re-entered the conversation screen.
+      if (navigator.onLine && AppState.sessionId && !AppState.micWs
+          && AppState.micStream
+          && document.getElementById('screen-convo').classList.contains('active')) {
+        openMicWebSocket(AppState.sessionId);
+      }
     }
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);

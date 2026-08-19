@@ -30,6 +30,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(app_module.persistence, "DB_PATH", test_db)
     monkeypatch.setattr(app_module.auth_store, "DB_PATH", test_db)
 
+    app_module.reset_otp_rate_limit()
     yield TestClient(app_module.app)
     token_store.reset_store()
 

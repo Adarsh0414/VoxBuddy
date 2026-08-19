@@ -30,7 +30,7 @@ try:
 except ImportError:
     pass  # python-dotenv is optional — env vars can be exported directly instead
 
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -53,6 +53,47 @@ auth_store.init_db()
 sessions: dict[str, SessionManager] = {}
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+
+
+# --- per-IP rate limiting for OTP requests ----------------------------------
+# auth_store.create_otp() already enforces a per-IDENTIFIER cooldown (one
+# phone/email can't spam itself), but nothing previously stopped one client
+# from requesting OTPs for many DIFFERENT identifiers rapidly — real abuse
+# surface, since every request costs a real SMS/email send once a real
+# OTP_EMAIL/SMS_PROVIDER is configured (Brevo/Fast2SMS/SMTP all charge or
+# rate-limit per-account, not just per-recipient). Deliberately a small
+# fixed-window in-memory limiter, not a new dependency (slowapi/Redis) —
+# proportionate for a single-instance deployment; revisit if this ever runs
+# behind a real load balancer with multiple instances, since counts here
+# don't share across processes.
+import time as _time
+from collections import defaultdict as _defaultdict
+
+_otp_request_log: dict[str, list[float]] = _defaultdict(list)
+_OTP_RATE_LIMIT_WINDOW_SECONDS = 600      # 10 minutes
+_OTP_RATE_LIMIT_MAX_REQUESTS = 8          # per IP, per window
+
+
+def _check_otp_rate_limit(client_ip: str) -> None:
+    now = _time.time()
+    window_start = now - _OTP_RATE_LIMIT_WINDOW_SECONDS
+    recent = [t for t in _otp_request_log[client_ip] if t > window_start]
+    if len(recent) >= _OTP_RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many code requests from this network. Try again in a few minutes.",
+        )
+    recent.append(now)
+    _otp_request_log[client_ip] = recent
+
+
+def reset_otp_rate_limit() -> None:
+    """Test-only helper, mirroring token_store.reset_store() — clears the
+    in-memory rate-limit counters between tests. Without this, every test
+    in a file that calls request-otp shares one bucket (TestClient always
+    reports the same fake client IP), so a handful of legitimate test
+    calls trips the same limiter real abuse would."""
+    _otp_request_log.clear()
 
 
 class UtteranceIn(BaseModel):
@@ -155,7 +196,15 @@ def _to_user_out(user: auth_store.AuthUser) -> AuthUserOut:
 
 
 @app.post("/api/auth/request-otp", response_model=RequestOtpOut)
-def request_otp(body: RequestOtpIn):
+def request_otp(body: RequestOtpIn, request: Request):
+    # x-forwarded-for first: Render (and most PaaS hosts) sit behind a
+    # proxy, so request.client.host would otherwise always be the proxy's
+    # own IP — the actual rate limit would then apply to every user at
+    # once instead of per real client.
+    client_ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                 or (request.client.host if request.client else "unknown"))
+    _check_otp_rate_limit(client_ip)
+
     try:
         identifier = auth_store.normalize_identifier(body.identifier, body.channel)
     except auth_store.InvalidIdentifier as e:
