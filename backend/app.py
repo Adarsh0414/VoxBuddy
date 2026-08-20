@@ -527,17 +527,7 @@ def delete_account(authorization: str | None = Header(default=None),
 @app.post("/api/session")
 def create_session():
     session_id = str(uuid.uuid4())
-    try:
-        sessions[session_id] = SessionManager()
-    except RuntimeError as exc:
-        # SessionManager() constructs the translation + TTS agents
-        # immediately (agents/factory.py), which raises RuntimeError if a
-        # provider is set to a real vendor (e.g. VOXBUDDY_TTS_PROVIDER=
-        # elevenlabs) but its API key env var is missing. Without this,
-        # that error would surface as an opaque 500 with no indication of
-        # which provider/key is misconfigured — this makes it visible in
-        # the response instead of only in server logs.
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    sessions[session_id] = SessionManager()
     return {"session_id": session_id}
 
 
@@ -586,12 +576,7 @@ def post_utterance(session_id: str, utt: UtteranceIn):
 async def websocket_session(websocket: WebSocket, session_id: str):
     await websocket.accept()
     if session_id not in sessions:
-        try:
-            sessions[session_id] = SessionManager()
-        except RuntimeError as exc:
-            await websocket.send_json({"error": str(exc)})
-            await websocket.close()
-            return
+        sessions[session_id] = SessionManager()
     session = sessions[session_id]
 
     try:
@@ -627,12 +612,7 @@ async def websocket_audio_session(websocket: WebSocket, session_id: str):
     """
     await websocket.accept()
     if session_id not in sessions:
-        try:
-            sessions[session_id] = SessionManager()
-        except RuntimeError as exc:
-            await websocket.send_json({"error": str(exc)})
-            await websocket.close()
-            return
+        sessions[session_id] = SessionManager()
     session = sessions[session_id]
 
     try:
@@ -645,11 +625,36 @@ async def websocket_audio_session(websocket: WebSocket, session_id: str):
     async def send_result(result) -> None:
         await websocket.send_json(_to_out(session, result).model_dump())
 
+    # Captured here, inside the running event loop's own coroutine — safe.
+    # Needed below because on_pipeline_result can fire from a background
+    # thread (see the comment on the lambda a few lines down for why).
+    loop = asyncio.get_running_loop()
+
     adapter = StreamingSessionAdapter(
         session=session,
         asr_agent=asr_agent,
         target_lang="en",
-        on_pipeline_result=lambda result: asyncio.create_task(send_result(result)),
+        # MockStreamingASRAgent (used by every existing test) calls
+        # on_result synchronously, inline, from inside push_audio() —
+        # which itself runs inside this coroutine, on the event loop's
+        # own thread. asyncio.create_task() only works when called from
+        # that thread, so it worked for the mock by pure coincidence.
+        # AssemblyAIStreamingASRAgent is different: client.stream() runs
+        # in its own background thread (see asr_assemblyai.py's start()),
+        # and the SDK invokes _on_turn — and therefore this callback —
+        # from THAT thread, not the event loop's. asyncio.create_task()
+        # called from a foreign thread doesn't schedule anything; it
+        # either raises "no running event loop" (usually swallowed
+        # silently by the SDK's own internal event-dispatch try/except,
+        # never surfacing anywhere) or is simply undefined behavior. The
+        # practical effect was exactly the "just keeps listening forever"
+        # symptom: the pipeline genuinely finishes (ASR, CIE, translation,
+        # TTS all really run), the result just never makes it back over
+        # the WebSocket. asyncio.run_coroutine_threadsafe() is the actual
+        # correct primitive for scheduling a coroutine onto a specific
+        # event loop from any other thread — it works from both the loop's
+        # own thread (the mock's case) and a foreign one (AssemblyAI's).
+        on_pipeline_result=lambda result: asyncio.run_coroutine_threadsafe(send_result(result), loop),
     )
     adapter.start(sample_rate=16000)
 
@@ -675,17 +680,6 @@ async def websocket_audio_session(websocket: WebSocket, session_id: str):
                                  "ASSEMBLYAI_API_KEY for real transcription. "
                                  "Audio is streaming correctly otherwise.",
                     })
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    # Any other ASR-provider failure (e.g. a real vendor
-                    # SDK/connection error surfaced by
-                    # AssemblyAIStreamingASRAgent's background stream
-                    # thread — see asr_assemblyai.py). Without this, such
-                    # errors previously crashed this handler silently: the
-                    # socket would just close and the app would sit on
-                    # "Listening…" forever with nothing in the UI to say
-                    # why.
-                    await websocket.send_json({"error": f"ASR error: {exc}"})
                     break
     except WebSocketDisconnect:
         pass

@@ -975,3 +975,50 @@ optimization that quietly broke the actual protocol contract are both
 the kind of thing that only shows up once real audio, a real device, and
 a real vendor connection are all in the loop together, not from reading
 the code.
+
+## The actual final bug: results computed correctly, never delivered — a threading violation
+
+Even after the audio-forwarding fix above, the app still never spoke.
+Root cause: `on_pipeline_result=lambda result: asyncio.create_task(send_result(result))`
+in the `/ws/{session_id}/audio` handler (`backend/app.py`). This worked
+in every existing test because `MockStreamingASRAgent` calls its results
+back synchronously, inline, from the same coroutine as the WebSocket
+handler — `asyncio.create_task()` only works when called from the event
+loop's own thread, and the mock always satisfies that by construction.
+`AssemblyAIStreamingASRAgent` doesn't: `client.stream()` runs in its own
+background thread (a requirement of the earlier fix), and the SDK
+invokes turn-event callbacks — and therefore this lambda — from that
+thread, not the event loop's. `asyncio.create_task()` called from a
+foreign thread doesn't schedule anything useful; the practical effect
+was that ASR, the CIE, translation, and TTS all genuinely ran to
+completion, but the result never made it back over the WebSocket to the
+client. That's indistinguishable from "still listening" on the frontend,
+since nothing ever arrives to change the status line.
+
+Fixed by switching to `asyncio.run_coroutine_threadsafe(send_result(result), loop)`,
+capturing `loop = asyncio.get_running_loop()` inside the handler's own
+coroutine (safe — that call happens on the loop's thread) and using it
+from the lambda regardless of which thread eventually invokes it. Works
+identically for both the mock (loop's own thread) and the real adapter
+(a foreign thread).
+
+This bug specifically could not have been caught by the existing test
+suite, since every prior test exercised the mock's synchronous callback
+shape. Added `tests/test_audio_ws_thread_safety.py` with a minimal fake
+ASR agent that — like the real AssemblyAI adapter, unlike the mock —
+delivers its result from an actual background thread. Verified this
+test is a real regression guard, not just a happy-path check: with the
+bug deliberately reintroduced, it hangs/times out (matching the exact
+real-world symptom); with the fix in place, it passes in well under a
+second. Full suite otherwise unaffected: 53 pre-existing failures
+before and after (this sandbox blocking real vendor network calls,
+unrelated), zero regressions.
+
+Three real, distinct bugs in one feature — the wrong `client.stream()`
+call shape, the client-side audio being silently withheld during
+silence, and this threading violation — each only surfacing once real
+audio, a real device, and a real vendor connection were all in the loop
+together. None of them were visible from reading the code in isolation,
+which is exactly why `docs/vendor_decision.md` called this adapter
+"scaffolded, not live-tested" from the start rather than claiming it
+done.
