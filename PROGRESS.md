@@ -1083,3 +1083,50 @@ and only surfaced once real audio, a real device, and real vendor
 traffic were all in the loop together — which is the whole reason this
 adapter was tracked as "scaffolded, not live-tested" from the start
 rather than claimed done.
+
+## Bug #5: ElevenLabs 402 — the default voice_id was a paid-plan-only Library voice
+
+Confirmed via a real device screenshot showing the actual ElevenLabs API
+error surfaced end-to-end for the first time (thanks to the error
+plumbing added while chasing bug #4): `402 Payment Required` — "Free
+users cannot use library voices via the API." Everything upstream is
+now genuinely working: real transcription, real speaker detection
+("Detected speaker"), real context-aware translation, saved to real
+conversation history. This is now purely a TTS-configuration issue, not
+a pipeline bug.
+
+Root cause: `DEFAULT_VOICE_IDS` in `agents/tts_elevenlabs.py` pointed
+every language at `VO7pRycLkEn8V7IWzZ0r` — a voice pulled from
+ElevenLabs' shared community Voice Library. ElevenLabs restricts Library
+voices to paid-plan accounts specifically for *API* access (free to
+preview in their own dashboard, blocked via `text_to_speech.convert()`
+on a Free-tier key).
+
+Fixed by switching to `21m00Tcm4TlvDq8ikWAM` ("Rachel") — one of
+ElevenLabs' original "premade" voices, bundled with every account
+including Free, and accessible via the API on every plan tier. Also
+wrapped the `convert()` call in a try/except that appends an actionable
+hint (which dashboard tab to check, what to filter for) whenever this
+specific error class recurs, since ElevenLabs' own error message is
+accurate but doesn't say what to actually do about it.
+
+Still a real, documented gap: every language uses the same voice
+(Rachel), so en/hi/fr all sound identical — flagged as a TODO in the
+file itself. Fixing that requires picking distinct voice IDs from your
+own account's premade voices, which needs your ElevenLabs dashboard, not
+something to guess at from here.
+
+Full suite: 50 pre-existing failures (unchanged from before this fix —
+all sandbox-network-blocked, unrelated), 132 passed. One pre-existing,
+already-documented test bug (`test_elevenlabs_agent_requires_real_voice_id`)
+is unaffected by this change — it was already broken before today for an
+unrelated reason (flagged in this file's very first ElevenLabs entry).
+
+Five real bugs found across five rounds of real testing, each only
+surfacing with real audio + a real device + real vendor traffic: a wrong
+SDK call shape, silently-withheld audio breaking a vendor's endpointing,
+a cross-thread asyncio violation, an unguarded call to a deprecated model
+ID, and a voice_id requiring a plan tier the account doesn't have. This
+is the value of shipping error visibility alongside each fix, not just
+the fix itself — bug #5 was only diagnosable at all because bug #4's
+fix made the underlying vendor error visible instead of silent.

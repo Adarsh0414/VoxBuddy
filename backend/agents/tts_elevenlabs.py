@@ -25,13 +25,34 @@ import os
 
 from .base import TTSResult
 
-# A small default voice map per target language. Real voice IDs need to be
-# selected from the ElevenLabs voice library at integration time — these
-# are placeholders to be replaced, not verified IDs.
+# A small default voice map per target language.
+#
+# Real bug caught in production: this used to point every language at
+# "VO7pRycLkEn8V7IWzZ0r" — a *Voice Library* voice (one pulled from
+# ElevenLabs' shared community library, e.g. via their Voice Library
+# browser). ElevenLabs restricts Library voices to paid-plan accounts
+# specifically for API access — even though they're free to preview in
+# the dashboard — and returns 402 Payment Required ("Free users cannot
+# use library voices via the API") for every synthesis call. Because
+# translation succeeds before this call, the failure was visible (thanks
+# to the translation_error/tts_error surfacing added in session/manager.py
+# and app.py) but still meant total silence: right diagnosis, wrong voice.
+#
+# Fixed by switching to "premade" voices — the original built-in voices
+# ElevenLabs bundles with every account (including Free), NOT pulled from
+# the shared Library, and accessible via the API on every plan tier. Same
+# voice for every language here isn't a bug on its own (ElevenLabs' models
+# handle multiple languages per voice) — see the TODO below for varying it
+# per language once you've picked voices from your own account.
+#
+# TODO: these are still the same single voice for every language. Pick
+# distinct voices per language from your own ElevenLabs account (Voice
+# Library tab -> filter "My Voices"/premade only, NOT the shared
+# community library) so en/hi/fr don't all sound identical.
 DEFAULT_VOICE_IDS: dict[str, str] = {
-    "en": "VO7pRycLkEn8V7IWzZ0r",
-    "hi": "VO7pRycLkEn8V7IWzZ0r",
-    "fr": "VO7pRycLkEn8V7IWzZ0r",
+    "en": "21m00Tcm4TlvDq8ikWAM",  # "Rachel" — premade, free-tier-safe
+    "hi": "21m00Tcm4TlvDq8ikWAM",
+    "fr": "21m00Tcm4TlvDq8ikWAM",
 }
 
 DEFAULT_MODEL = "eleven_flash_v2_5"  # lowest-latency model per vendor research
@@ -67,13 +88,34 @@ class ElevenLabsTTSAgent:
                 f"time (see DEFAULT_VOICE_IDS placeholders in this file)."
             )
 
-        audio_chunks = client.text_to_speech.convert(
-            voice_id=voice_id,
-            model_id=self.model_id,
-            text=text,
-            output_format="mp3_44100_128",
-        )
-        audio_bytes = b"".join(audio_chunks)
+        try:
+            audio_chunks = client.text_to_speech.convert(
+                voice_id=voice_id,
+                model_id=self.model_id,
+                text=text,
+                output_format="mp3_44100_128",
+            )
+            audio_bytes = b"".join(audio_chunks)
+        except Exception as exc:  # noqa: BLE001 - vendor SDK error types vary
+            # ElevenLabs' own error message here ("Free users cannot use
+            # library voices via the API") is accurate but doesn't say
+            # what to actually do about it — this is exactly the error a
+            # Library-sourced voice_id produces on a Free-tier account,
+            # which is what DEFAULT_VOICE_IDS above used to be. Re-raising
+            # with an actionable hint appended, rather than a bare pass-
+            # through, since this is the single most likely
+            # misconfiguration anyone deploying this adapter will hit.
+            msg = str(exc)
+            if "library voices" in msg.lower() or "payment_required" in msg.lower():
+                msg += (
+                    " — this voice_id is from ElevenLabs' shared Voice "
+                    "Library, which requires a paid plan for API access "
+                    "even though it's free to preview in their dashboard. "
+                    "Fix: use a 'premade' voice from your own account "
+                    "instead (ElevenLabs dashboard -> Voices -> filter to "
+                    "your own/premade voices, not the community Library)."
+                )
+            raise RuntimeError(msg) from exc
 
         # The convert() call doesn't return duration directly; estimating
         # from mp3 byte size at the fixed bitrate above is rough but fine
