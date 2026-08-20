@@ -1130,3 +1130,45 @@ ID, and a voice_id requiring a plan tier the account doesn't have. This
 is the value of shipping error visibility alongside each fix, not just
 the fix itself — bug #5 was only diagnosable at all because bug #4's
 fix made the underlying vendor error visible instead of silent.
+
+## Bug #5, continued: even the hardcoded "premade" voice fix wasn't reliable
+
+The Rachel fix from the previous entry looked right and matched years of
+tutorials/documentation — and still failed with the exact same 402 on a
+real account, confirmed via another live-device screenshot. Checked
+ElevenLabs' own current docs directly rather than trusting memory:
+"All our Default voices will expire on December 31, 2026... being
+replaced with new voices." ElevenLabs is actively retiring their entire
+classic Default voice catalog in 2026 — Rachel and the other IDs from
+years of blog posts and tutorials (including the one just added) are
+not reliably present/free-tier-accessible on a given account during
+this transition. Any specific voice_id hardcoded from training data or
+general documentation is fundamentally unreliable right now for exactly
+this reason — this wasn't a mistake in which ID to pick, it was a
+mistake to hardcode any ID at all.
+
+Real fix: `agents/tts_elevenlabs.py` no longer hardcodes any voice_id.
+`_resolve_voice_id()` queries the account's own actual voice list at
+runtime via `client.voices.search(category="premade")` — the one
+category ElevenLabs' docs confirm is genuinely API-accessible on every
+plan tier including Free (unlike `category="professional"`/Library
+voices) — and picks a real, currently-valid voice from whatever that
+account actually has. Cached per-process so it's not re-queried on every
+single synthesize() call. Also added a self-healing retry: if a
+cached/configured voice_id ever starts failing with the Library-voice
+402 (e.g. ElevenLabs moves an ID between categories later), it's dropped
+and a fresh premade voice is resolved automatically instead of failing
+the same way on every call from then on.
+
+Updated `tests/test_agent_scaffolds.py`'s ElevenLabs tests to match:
+removed the now-obsolete placeholder-string check
+(`test_elevenlabs_agent_requires_real_voice_id`, already broken before
+today for an unrelated reason — see the earlier entry), added coverage
+for the empty-account failure path, the resolve-and-cache happy path,
+and the self-healing retry, each using a fake client so they run without
+any real ElevenLabs credentials.
+
+Full suite: 49 pre-existing failures (down from 50 — the stale
+placeholder test above is no longer counted since it no longer exists in
+its old broken form), 135 passed (3 new tests, 1 old one replaced). Zero
+regressions.
