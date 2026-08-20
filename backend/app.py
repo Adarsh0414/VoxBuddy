@@ -119,6 +119,7 @@ class UtteranceOut(BaseModel):
     tts_audio_b64: str | None = None
     tts_audio_format: str | None = None
     tts_error: str | None = None
+    translation_error: str | None = None
 
 
 def _to_out(session: SessionManager, result) -> UtteranceOut:
@@ -137,6 +138,7 @@ def _to_out(session: SessionManager, result) -> UtteranceOut:
         tts_audio_b64=getattr(result, "tts_audio_b64", None),
         tts_audio_format=getattr(result, "tts_audio_format", None),
         tts_error=getattr(result, "tts_error", None),
+        translation_error=getattr(result, "translation_error", None),
         speakers_tracked=len(session.state.speakers),
     )
 

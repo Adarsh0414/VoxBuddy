@@ -25,7 +25,22 @@ from .base import TranslationResult
 # this default has been superseded by the time you're reading this. Check
 # ai.google.dev/gemini-api/docs/models for the current recommended
 # fast/cheap model for a latency-sensitive task like this one.
-DEFAULT_MODEL = "gemini-2.5-flash"
+#
+# Real bug caught in production: this used to default to
+# "gemini-2.5-flash", which Google deprecated for newly-created API keys
+# ahead of its official Oct 16, 2026 shutdown — every call returned a 404
+# ("This model models/gemini-2.5-flash is no longer available to new
+# users"), visible directly in the Gemini API dashboard's error graph.
+# Because the translation call wasn't wrapped in a try/except at the time
+# (see session/manager.py's _translate_and_record, since fixed), that 404
+# silently killed every single turn with no error shown anywhere — the
+# app just looked like it was permanently stuck listening. Updated to
+# gemini-3.5-flash-lite: current-generation, GA, and explicitly Google's
+# fastest/cheapest tier — the same "fast/cheap model for a
+# latency-sensitive task" this default was always meant to be, just on a
+# model ID that still exists. Bump to gemini-3.6-flash or newer via
+# GEMINI_MODEL if translation quality ever matters more than raw latency.
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
 SYSTEM_PROMPT = (
     "You are a real-time conversational speech translator embedded in a "

@@ -1022,3 +1022,64 @@ together. None of them were visible from reading the code in isolation,
 which is exactly why `docs/vendor_decision.md` called this adapter
 "scaffolded, not live-tested" from the start rather than claiming it
 done.
+
+## The actual actual final bug: Gemini's model ID was deprecated, and the failure was silent
+
+The person confirmed via a screenshot of their own Gemini API dashboard:
+"Total API Errors" showing a spike of `404 NotFound`. That's the real
+cause — `translation_gemini.py`'s default model, `gemini-2.5-flash`,
+was deprecated by Google for newly-created API keys ahead of its
+official Oct 16, 2026 shutdown; every real translation call was getting
+an immediate 404 ("This model models/gemini-2.5-flash is no longer
+available to new users").
+
+That alone would just mean translation fails — the real bug is what
+happened next: `SessionManager._translate_and_record()` called
+`self.translation_agent.translate()` with **no try/except**, unlike the
+TTS call immediately below it, which was already correctly guarded. The
+404 exception propagated straight out of the pipeline with nothing to
+catch it. For the real audio path specifically, that exception surfaces
+on AssemblyAI's own SDK background thread (a requirement of an earlier
+fix), which silently swallows it inside its own internal callback
+dispatch rather than letting it reach anywhere visible. Net effect:
+ASR genuinely transcribes, the CIE genuinely runs, translation genuinely
+gets called — and then the whole turn just vanishes. Indistinguishable
+from "still listening" on the client, exactly the symptom reported.
+
+Two fixes:
+1. **`agents/translation_gemini.py`** — updated `DEFAULT_MODEL` to
+   `gemini-3.5-flash-lite` (current-generation, GA, and explicitly
+   Google's fastest/cheapest tier — matching the original intent behind
+   this default, just on a model ID that still exists). Override via
+   `GEMINI_MODEL` for a quality/cost tradeoff.
+2. **`session/manager.py`** — wrapped the `translate()` call in
+   try/except, mirroring the TTS pattern exactly. Added a
+   `translation_error` field to `PipelineResult`, threaded through
+   `app.py`'s `_to_out()`/`UtteranceOut`, and surfaced on the frontend
+   status line (`frontend/app-preview.html`) as `Translation failed:
+   ...` — so a future vendor failure (deprecated model, expired key,
+   quota, network issue) is visible immediately instead of silently
+   killing the turn.
+
+Added `tests/test_translation_error_handling.py` with a fake translation
+agent that raises exactly this kind of error. Verified it's a real
+regression guard the same way as the earlier threading test: deliberately
+reintroduced the unguarded call, confirmed the test fails with the raw
+`RuntimeError` (matching the exact production failure mode), then
+restored the fix and confirmed it passes. Full suite: 50 pre-existing
+failures both before and after (sandbox-blocked real vendor network
+calls — this sandbox's own attempts to reach Anthropic/Gemini/AssemblyAI
+are blocked, which is exactly the class of failure this fix now handles
+gracefully instead of crashing on, incidentally reducing the raw failure
+count from 53 to 50 as a side effect — same root cause, just failing
+cleanly instead of crashing now), 132 passed (130 baseline + 2 new).
+
+Four real, distinct bugs found in this one feature across four rounds of
+real testing — a wrong SDK call, silently-withheld audio breaking a
+vendor's endpointing, a cross-thread asyncio violation, and an unguarded
+call to a vendor whose model ID had been deprecated out from under the
+app. Every one of them was invisible from reading the code in isolation
+and only surfaced once real audio, a real device, and real vendor
+traffic were all in the loop together — which is the whole reason this
+adapter was tracked as "scaffolded, not live-tested" from the start
+rather than claimed done.

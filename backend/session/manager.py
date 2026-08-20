@@ -43,6 +43,7 @@ class PipelineResult:
     tts_audio_b64: str | None = None
     tts_audio_format: str | None = None
     tts_error: str | None = None
+    translation_error: str | None = None
 
 
 class SessionManager:
@@ -134,7 +135,28 @@ class SessionManager:
                                target_lang: str, start: float) -> PipelineResult:
         source_lang, _ = self.lid_agent.detect(text)
         context = [t.target_text for t in self.state.recent_turns(3)]
-        translation = self.translation_agent.translate(text, source_lang, target_lang, context)
+
+        # This call used to be unguarded — a real vendor failure (bad
+        # model name, missing/expired key, quota, a 404 from a
+        # deprecated model ID) raised straight out of here. Nothing
+        # downstream ever caught it: it propagated out of
+        # session/streaming_manager.py's _handle_asr_result, which for
+        # AssemblyAIStreamingASRAgent runs on the vendor SDK's own
+        # background thread (see asr_assemblyai.py) — an exception raised
+        # there, inside a foreign SDK's callback dispatch, has nowhere to
+        # go and is typically swallowed by the SDK's own internal
+        # try/except rather than surfacing anywhere. The practical
+        # symptom: ASR genuinely transcribes, then the whole turn just
+        # vanishes — indistinguishable from "still listening" on the
+        # client, since nothing ever reaches app.py's WebSocket send.
+        # Mirrors the TTS error-handling immediately below, which already
+        # got this right.
+        try:
+            translation = self.translation_agent.translate(text, source_lang, target_lang, context)
+        except Exception as exc:  # noqa: BLE001 - vendor errors vary by SDK
+            latency_ms = (time.perf_counter() - start) * 1000
+            return PipelineResult(decision=decision, turn=None, latency_ms=latency_ms,
+                                   translated_text=None, translation_error=str(exc))
 
         # TTS output used to be synthesized and immediately discarded here
         # (the return value was never used) — nothing downstream ever

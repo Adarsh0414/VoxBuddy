@@ -2952,7 +2952,15 @@
           AppState.turnsThisSession++;
         }
         playTtsAudioIfReal(result);
-        if (result.translated_text) {
+        if (result.translation_error) {
+          // A translation-vendor failure (bad model ID, missing key,
+          // quota, a 404 from a deprecated model) used to kill the whole
+          // turn silently — the CIE/ASR had genuinely finished, but
+          // nothing ever reached here to say so. Now the backend always
+          // sends a result even on this failure path, so this branch is
+          // reachable and visible instead of the turn just vanishing.
+          statusLine.textContent = `Translation failed: ${result.translation_error}`;
+        } else if (result.translated_text) {
           // Surface a TTS failure right on the status line instead of only
           // console.warn — otherwise a misconfigured TTS provider (missing
           // ELEVENLABS_API_KEY, invalid voice_id, etc.) looks identical to
