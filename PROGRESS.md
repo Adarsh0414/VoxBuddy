@@ -936,3 +936,42 @@ submission, which checks for a working privacy policy contact.
   something to decide unilaterally in code.
 - **iOS build** — needs a physical Mac, which isn't available in this
   environment. No code change gets around that platform requirement.
+
+## The real "continuously listening, never speaks" bug — found via a real device recording
+
+The earlier `client.stream()` fix was necessary but not sufficient — after
+redeploying it, the app still never finalized a turn: mic capture kept
+animating indefinitely even after speech stopped, confirmed on video from
+a real device test. Root cause this time was on the frontend, not the
+ASR adapter: `startMicCapture`'s audio-processing loop had a client-side
+"noise gate" (`shouldForwardFrame`/`makeNoiseGateState`) that stopped
+sending audio to the backend entirely once it detected silence, to save
+bandwidth.
+
+That's incompatible with how a real streaming ASR vendor's turn detection
+actually works. AssemblyAI decides "the speaker has stopped talking,
+finalize this turn" by observing real silence *in the audio stream it
+receives* — its endpointing (VAD-based and semantic) runs against
+incoming audio, not a wall-clock timer independent of it. If the app
+stops sending audio the instant it goes quiet, AssemblyAI's connection
+just goes idle waiting for more data — it never gets the silence it
+needs to conclude the turn ended, so `end_of_turn` never fires, so
+nothing ever reaches translation or TTS. It also wasn't a real bandwidth
+optimization to begin with: AssemblyAI bills by WebSocket connection
+time, not by audio bytes sent, confirmed via their own docs.
+
+Fixed in `frontend/app-preview.html`: removed the noise gate from the
+send path entirely — every real audio frame (including silence) is now
+forwarded to the backend, letting AssemblyAI's own turn detection do its
+job as designed. `frameRMS()` is kept (used only for the live waveform
+visualization now); `makeNoiseGateState()`/`shouldForwardFrame()` were
+dead code after this change and removed rather than left unused.
+
+Two real bugs in one feature, found in two separate rounds of real
+testing, is exactly why "scaffolded against the documented shape, not
+live-tested" was called out honestly in `docs/vendor_decision.md` from
+the start rather than claimed as done — a wrong SDK call and a bandwidth
+optimization that quietly broke the actual protocol contract are both
+the kind of thing that only shows up once real audio, a real device, and
+a real vendor connection are all in the loop together, not from reading
+the code.

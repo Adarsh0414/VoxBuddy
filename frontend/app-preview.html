@@ -2863,9 +2863,6 @@
       }
 
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-      // Fresh adaptive noise-gate state per call — see makeNoiseGateState()
-      // and shouldForwardFrame() below for what this actually does.
-      AppState.noiseGate = makeNoiseGateState();
       AppState.micStream = stream;
       AppState.micReconnectAttempts = 0;
 
@@ -2883,14 +2880,26 @@
 
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0);
-        updateConvoWaveformLive(frameRMS(input)); // visualize every frame, even gated-out ones — you should see the meter respond the instant you make sound, not only once it clears the noise gate
+        updateConvoWaveformLive(frameRMS(input)); // visualize every frame
         // Reads AppState.micWs fresh on every frame (rather than closing
         // over a fixed `ws` reference) so this keeps working across a
         // reconnect below, which swaps in a brand new WebSocket object
         // without tearing down the mic stream/AudioContext.
         const currentWs = AppState.micWs;
         if (!currentWs || currentWs.readyState !== WebSocket.OPEN) return;
-        if (!shouldForwardFrame(input, AppState.noiseGate)) return;
+        // Every real audio frame is forwarded — including silence. A
+        // client-side noise gate used to drop frames below a
+        // noise floor to save bandwidth, but that silently broke the
+        // actual pipeline: AssemblyAI's turn detection decides "the
+        // speaker stopped talking, finalize this turn" by observing
+        // silence IN the audio stream it receives. If the app stops
+        // sending audio the instant it goes quiet, AssemblyAI never sees
+        // that silence — it just stops receiving data and waits
+        // indefinitely, so no turn ever finalizes and nothing ever
+        // reaches translation/TTS. This is also not a bandwidth
+        // optimization AssemblyAI rewards: they bill by connection time
+        // connected, not by bytes sent, so withholding silence saves
+        // nothing and only breaks their own endpointing.
         const downsampled = downsampleBuffer(input, audioCtx.sampleRate, TARGET_SAMPLE_RATE);
         const pcm16 = floatTo16BitPCM(downsampled);
         currentWs.send(pcm16);
@@ -2996,67 +3005,25 @@
       }
     }
 
-    // ---- Background noise filtering (adaptive energy-based gate) ------
-    // Real signal processing, not a cosmetic toggle — but scoped
-    // honestly: this is a voice-activity gate (stops sending audio
-    // frames that are just ambient room noise), not full noise
-    // *removal* from within a frame (spectral subtraction / RNNoise-style
-    // denoising is a genuinely different, much bigger project — this is
-    // the "don't waste ASR time/cost on silence and background hum"
-    // layer, which is also most of what "noise filtering" means for a
-    // conversation app in practice: cutting dead air between turns).
-    //
-    // How it works: tracks a running estimate of the "noise floor" (the
-    // ambient energy level when nobody's talking) using an exponential
-    // moving average that only updates during quiet frames, so it slowly
-    // adapts to the actual room instead of using one fixed threshold.
-    // A frame is forwarded as speech if its energy clears the floor by a
-    // margin. A short "hangover" window keeps forwarding for a few frames
-    // after energy drops, so trailing consonants at the end of a word
-    // don't get chopped off — a standard VAD technique, not a novel one.
-    //
-    // Fully unit-testable without a microphone (pure math on Float32Array
-    // input) — verified against synthetic tone/silence buffers in Node,
-    // not just "should work in theory."
-    function makeNoiseGateState() {
-      return {
-        noiseFloor: 0.002,   // starting estimate, adapts quickly in practice
-        hangoverFrames: 0,
-        FLOOR_ADAPT_RATE: 0.05,
-        SPEECH_MARGIN: 2.5,   // frame must exceed floor * this to count as speech
-        HANGOVER_FRAME_COUNT: 6, // trailing hold, in audio buffers
-      };
-    }
-
+    // ---- Client-side audio-energy helper (visualization only) ---------
+    // frameRMS() is used purely to drive the live waveform meter now.
+    // A "noise gate" used to sit here too — dropping frames below an
+    // adaptive noise floor before sending them, to save bandwidth. It's
+    // been removed: it was silently incompatible with a real streaming
+    // ASR vendor's own turn detection. AssemblyAI decides "the speaker
+    // stopped talking" by observing actual silence IN the audio it
+    // receives — withholding audio during silence means it never
+    // receives that signal, so it never finalizes a turn, so nothing
+    // ever reaches translation/TTS (see the fix note in
+    // startMicCapture()'s onaudioprocess handler above, and
+    // PROGRESS.md). It also wasn't even saving anything: AssemblyAI
+    // bills by connection time, not by audio bytes sent.
     function frameRMS(floatSamples) {
       let sumSquares = 0;
       for (let i = 0; i < floatSamples.length; i++) {
         sumSquares += floatSamples[i] * floatSamples[i];
       }
       return Math.sqrt(sumSquares / floatSamples.length);
-    }
-
-    function shouldForwardFrame(floatSamples, gate) {
-      if (!gate) return true; // gate disabled/not initialized -> fail open, never silently drop real audio
-      const energy = frameRMS(floatSamples);
-      const isSpeech = energy > gate.noiseFloor * gate.SPEECH_MARGIN;
-
-      if (isSpeech) {
-        gate.hangoverFrames = gate.HANGOVER_FRAME_COUNT;
-        return true;
-      }
-
-      // Only adapt the floor during confirmed-quiet frames — adapting
-      // during speech would let loud talking slowly raise the floor
-      // until the gate started eating your own voice.
-      gate.noiseFloor = (1 - gate.FLOOR_ADAPT_RATE) * gate.noiseFloor
-                       + gate.FLOOR_ADAPT_RATE * energy;
-
-      if (gate.hangoverFrames > 0) {
-        gate.hangoverFrames--;
-        return true; // still in the trailing hold window
-      }
-      return false;
     }
 
     function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
