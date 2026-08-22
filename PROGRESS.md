@@ -1172,3 +1172,90 @@ Full suite: 49 pre-existing failures (down from 50 — the stale
 placeholder test above is no longer counted since it no longer exists in
 its old broken form), 135 passed (3 new tests, 1 old one replaced). Zero
 regressions.
+
+## Bug #5, part 3: the fix for the fix needed a permission the API key doesn't have
+
+Confirmed via yet another live-device screenshot: 401 Unauthorized —
+"The API key you used is missing the permission voices_read to execute
+this operation." This is a direct consequence of the previous entry's
+fix: `client.voices.search(...)` (used to discover a real premade voice
+at runtime) requires the API key to have the `voices_read` permission
+scope. The account's key was apparently created with a restricted scope
+(Text-to-Speech only) — real synthesis calls had been reaching
+ElevenLabs fine throughout this whole saga, just never the voice-listing
+endpoint, since nothing had called it before this fix existed.
+
+Two changes, so there's a path forward regardless of whether the API
+key's permissions get changed:
+
+1. **`agents/factory.py`** — added `ELEVENLABS_VOICE_ID` (and optional
+   per-language `ELEVENLABS_VOICE_ID_EN`/`_HI`/`_FR` overrides) as env
+   vars. Setting this skips runtime discovery entirely — only the
+   Text-to-Speech permission is ever used on that path, which this key
+   already has. This is the fastest unblock: get one real voice_id from
+   the ElevenLabs dashboard's Voices tab and set it as an env var on
+   Render, no API key permission changes needed at all.
+2. **`agents/tts_elevenlabs.py`** — the discovery failure itself now
+   gives an actionable error pointing at both real fixes (enable the
+   `Voices` read permission on the API key in ElevenLabs' dashboard, or
+   set `ELEVENLABS_VOICE_ID` to skip discovery) instead of just relaying
+   the raw vendor message.
+
+Added test coverage for both: the factory correctly building a
+per-language voice_ids map from the new env vars (with per-language
+overrides winning over the blanket default), and the discovery failure
+producing the actionable error message rather than the raw one.
+
+This is now the third layer of the same underlying story: TTS
+configuration issues are genuinely account/vendor-specific and can't be
+fully solved by guessing from outside the account — the honest fix here
+is giving explicit control back to whoever holds the ElevenLabs account,
+with a code path that doesn't require any account settings changes at
+all if the person would rather just paste in one working voice_id
+directly.
+
+Full suite: 49 pre-existing failures (unchanged, sandbox-network-blocked,
+unrelated), 137 passed (2 new tests). Zero regressions.
+
+## Bug #6: the whole pipeline finally worked end to end — and it always spoke English
+
+Real progress confirmed on a live device: ASR, CIE partner detection,
+context-aware translation, and TTS playback all genuinely working
+together for the first time. The remaining issue reported: a user with
+Hindi selected as "You speak" heard the translation spoken back in
+English regardless.
+
+Root cause was the same class of bug as the earlier hardcoded-target_lang
+issue flagged (but not yet fixed) back when this pipeline was first
+wired up: `websocket_audio_session` in `app.py` passed
+`target_lang="en"` to `StreamingSessionAdapter` unconditionally — nothing
+about the actual logged-in user's language preference ever reached the
+translation call. `preferred_language` was already being captured at
+onboarding and displayed correctly on Home/Settings; it just never made
+it into the one place that actually mattered, the live audio pipeline.
+
+Fixed end to end:
+- **`app.py`** — `/ws/{session_id}/audio` now accepts `target_lang` as a
+  query parameter (FastAPI route parameter, defaults to `"en"` only as a
+  genuine fallback, not a silent override) and threads the real value
+  into the pipeline instead of the hardcoded string.
+- **`frontend/app-preview.html`** — `openMicWebSocket()` now reads
+  `AuthState.user.preferred_language` (the same value Home/Settings
+  already display) and appends it to the WebSocket URL as
+  `?target_lang=...`.
+
+Added two tests to `tests/test_app_audio_ws.py`, taking advantage of
+`MockTranslationAgent` conveniently tagging its output with whatever
+target_lang it was given (`f"[{target_lang}] {text}"`) — directly
+assertable without a real translation vendor. Verified both are real
+regression guards the same way as every fix in this saga: deliberately
+reintroduced the hardcoded `"en"`, confirmed the Hindi test fails with
+exactly `'[en] namaste'` (the literal production symptom), restored the
+fix, confirmed it passes again.
+
+Full suite: 49 pre-existing failures (unchanged — sandbox-network-blocked,
+unrelated), 139 passed (2 new). Zero regressions. Six real, distinct
+bugs now found and fixed across six rounds of real device testing on
+this one feature — each one only surfacing once real audio, a real
+device, a real logged-in user, and real vendor traffic were all in the
+loop together at once.

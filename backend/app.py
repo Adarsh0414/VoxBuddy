@@ -592,7 +592,7 @@ async def websocket_session(websocket: WebSocket, session_id: str):
 
 
 @app.websocket("/ws/{session_id}/audio")
-async def websocket_audio_session(websocket: WebSocket, session_id: str):
+async def websocket_audio_session(websocket: WebSocket, session_id: str, target_lang: str = "en"):
     """
     Real microphone audio in, pipeline results out — the counterpart to
     /ws/{session_id} above, which only ever accepted pre-scripted text
@@ -635,7 +635,16 @@ async def websocket_audio_session(websocket: WebSocket, session_id: str):
     adapter = StreamingSessionAdapter(
         session=session,
         asr_agent=asr_agent,
-        target_lang="en",
+        # Real bug caught in production: this used to be hardcoded to
+        # "en" regardless of what the user actually selected as "You
+        # speak" during setup — every partner utterance got translated
+        # into English no matter what, confirmed live: a user with
+        # Hindi selected heard English spoken back. Now takes the real
+        # value from the query string, which the frontend populates from
+        # the logged-in user's own preferred_language (see startMicCapture()
+        # in app-preview.html) — falls back to "en" only if that's
+        # somehow missing, not as the silent default it used to be.
+        target_lang=target_lang,
         # MockStreamingASRAgent (used by every existing test) calls
         # on_result synchronously, inline, from inside push_audio() —
         # which itself runs inside this coroutine, on the event loop's

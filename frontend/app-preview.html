@@ -2931,7 +2931,17 @@
     function openMicWebSocket(sessionId) {
       const statusLine = document.getElementById('convo-status-line');
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(`${protocol}://${location.host}/ws/${sessionId}/audio`);
+      // Real bug: this used to omit target_lang entirely, so the backend
+      // silently defaulted to "en" no matter what the user picked as
+      // "You speak" during setup — confirmed live: a Hindi-selected user
+      // heard English spoken back. AuthState.user.preferred_language is
+      // set from the same source Home/Settings already display as the
+      // user's language (see the langBadge/langVal wiring elsewhere in
+      // this file) — falling back to 'en' only if that's somehow unset,
+      // matching the backend's own fallback rather than silently forcing
+      // English as the *intended* default.
+      const targetLang = AuthState.user?.preferred_language || 'en';
+      const ws = new WebSocket(`${protocol}://${location.host}/ws/${sessionId}/audio?target_lang=${encodeURIComponent(targetLang)}`);
       ws.binaryType = 'arraybuffer';
       AppState.micWs = ws;
 

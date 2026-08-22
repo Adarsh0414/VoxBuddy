@@ -59,3 +59,41 @@ def test_audio_endpoint_without_assemblyai_key_returns_clear_error(client, monke
     with client.websocket_connect("/ws/no-key-session/audio") as ws:
         result = ws.receive_json()
         assert "ASSEMBLYAI_API_KEY" in result["error"]
+
+
+def test_audio_endpoint_translates_into_the_query_param_target_lang(client, monkeypatch):
+    """Real bug caught in production: target_lang was hardcoded to "en" in
+    this endpoint regardless of what the user actually selected as "You
+    speak" during setup — a user with Hindi selected heard English spoken
+    back, confirmed on a real device. Fixed by accepting target_lang as a
+    query param (populated by the frontend from the logged-in user's own
+    preferred_language) instead of a hardcoded default. MockTranslationAgent
+    conveniently tags its output with the target_lang it was given
+    (`f"[{target_lang}] {text}"`), which is what makes this directly
+    assertable without a real translation vendor."""
+    monkeypatch.setenv("VOXBUDDY_TRANSLATION_PROVIDER", "mock")
+    monkeypatch.setenv("VOXBUDDY_TTS_PROVIDER", "mock")
+    from agents.mock_streaming_asr import END_OF_TURN
+
+    with client.websocket_connect("/ws/hindi-session/audio?target_lang=hi") as ws:
+        ws.send_bytes(b"namaste")
+        ws.send_bytes(END_OF_TURN.encode("utf-8"))
+        result = ws.receive_json()
+
+    assert result["translated_text"].startswith("[hi]")
+
+
+def test_audio_endpoint_defaults_to_english_when_target_lang_omitted(client, monkeypatch):
+    """The fallback still exists (the query param is optional) — this just
+    confirms omitting it doesn't error, and defaults sanely rather than
+    breaking the connection."""
+    monkeypatch.setenv("VOXBUDDY_TRANSLATION_PROVIDER", "mock")
+    monkeypatch.setenv("VOXBUDDY_TTS_PROVIDER", "mock")
+    from agents.mock_streaming_asr import END_OF_TURN
+
+    with client.websocket_connect("/ws/default-lang-session/audio") as ws:
+        ws.send_bytes(b"namaste")
+        ws.send_bytes(END_OF_TURN.encode("utf-8"))
+        result = ws.receive_json()
+
+    assert result["translated_text"].startswith("[en]")
